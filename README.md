@@ -15,7 +15,7 @@ other MCP client.
 | **Collection** | A single Qdrant-backed knowledge store, scoped to one subject area (e.g. *particle physics*, *software architecture*). Holds heterogeneous content types together. |
 | **Content type** | The kind of source material — `book`, `paper`, `code`, `figure`, etc. Each type has its own extractor, chunker, and per-modality embedder. |
 | **Adapter** | A concrete implementation of one of the framework's interfaces (extractor, chunker, embedder, indexer). Adapters are pluggable. |
-| **Cache** | Content-addressed on-disk store of stage outputs (extracted text, chunks, embeddings). Lives on the NAS so Mac and Turbo share it. |
+| **Cache** | Content-addressed on-disk store of stage outputs (extracted text, chunks, embeddings). Lives on the local filesystem of the ingest host (Turbo). NAS is used only for snapshot backups. |
 | **Manifest** | The framework's record of every input document × pipeline stage × outcome. Source of truth for "what's been ingested". |
 
 ## Layout
@@ -47,7 +47,8 @@ cat > ~/collections/particle-physics.toml <<'EOF'
 name = "particle_physics"
 content_root = "/mnt/nas/corpora/particle-physics"
 qdrant_url = "http://turbo.local:6333"
-cache_dir  = "/mnt/nas/librarian-cache"
+cache_dir  = "/var/lib/librarian/cache"
+snapshot_dir = "/mnt/nas/librarian-snapshots"
 
 [embedders]
 text = "openai:text-embedding-3-large"

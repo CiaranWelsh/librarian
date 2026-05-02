@@ -57,6 +57,11 @@ deliberate, modular, reusable replacement.
 | **F-1.2** | The framework SHALL NOT acquire, download, or otherwise fetch material. The contract is "files already on disk". |
 | **F-1.3** | The framework SHALL process each Document independently. A failure on Document *i* SHALL NOT halt processing of Document *j ≠ i*. |
 | **F-1.4** | Re-running ingestion on the same input SHALL be idempotent: stage outputs hit the cache, Qdrant points are upserted, no duplicates appear in the collection. |
+| **F-1.5** | v1 SHALL process Documents serially (one at a time). Concurrency is deferred; the design must not preclude introducing parallel workers later, but no parallel execution is implemented in v1. |
+| **F-1.6** | A stage adapter MAY declare a *fallback* adapter. On a recoverable failure (configurable per adapter — e.g. timeout, GPU OOM, transient HTTP 5xx), the framework SHALL retry on the fallback. The manifest SHALL record both attempts; status SHALL be `recovered_via_fallback` on success or `failed` (with all error messages preserved) on terminal failure. |
+| **F-1.7** | `ingest` SHALL be incremental by default. Running `ingest` against an existing collection with a source tree containing *N* previously-ingested Documents and *k* new ones SHALL process only the *k* new Documents end-to-end. The *N* unchanged Documents SHALL hit the cache and produce no Qdrant writes. |
+| **F-1.8** | When a previously-ingested Document is updated (its source bytes change → its `source_hash` changes), the next `ingest` run SHALL re-process it end-to-end and replace its chunks atomically. Specifically: because the new version may produce a different *number* of chunks than the prior version, simply upserting the new chunks is not sufficient — chunks from the prior version whose indices no longer exist in the new version would remain in Qdrant as orphans (referring to a document state that no longer exists, yet still surfacing in search results). The framework SHALL therefore, in a single ingest operation, delete every chunk belonging to the Document's prior version and upsert the chunks of the new version, leaving the collection containing exactly the new version's chunks and no orphans. |
+| **F-1.9** | The framework SHALL provide a `remove <source_id>` operation that deletes all chunks belonging to a Document from the collection and marks the Document `removed` in the manifest. Removing a source file from disk alone SHALL NOT remove its chunks — explicit `remove` is required. |
 
 ### 3.2 Pipeline stages
 
@@ -90,43 +95,155 @@ deliberate, modular, reusable replacement.
 
 | ID | Requirement |
 |---|---|
-| **F-5.1** | Each pipeline stage SHALL persist its output to a content-addressed cache on a shared filesystem path. Keys SHALL include the input content hash and the producing adapter's version identifier. |
+| **F-5.1** | Each pipeline stage SHALL persist its output to a content-addressed cache on the local filesystem of the host where ingest runs. Keys SHALL include the input content hash and the producing adapter's version identifier. The cache is not shared across hosts. |
 | **F-5.2** | A subsequent run MUST be able to re-use cache entries. Adding a new modality (e.g. a `multimodal` embedder) SHALL re-run only the affected stage on already-extracted, already-chunked content. |
 | **F-5.3** | The framework SHALL maintain a **manifest** (SQLite, single file per collection) with one row per `(document, stage)` pair: status (success / failure / skipped / cached), timestamp, error message, output reference. |
 | **F-5.4** | The manifest SHALL be the source of truth for resuming a partial run. |
 
-### 3.6 Verification
+### 3.6 Metadata
 
 | ID | Requirement |
 |---|---|
-| **F-6.1** | The framework SHALL admit a configurable **verification hook** between any two stages. Verifiers receive a Document plus stage output and may flag the document as failed. |
-| **F-6.2** | A reference verifier SHALL provide title-match validation for PDF-derived content, mitigating the failure mode where the wrong PDF was acquired (lesson carried over from `paper_sweep`). |
+| **F-M.1** | Every chunk SHALL carry a typed payload conforming to a single `ChunkPayload` schema defined in the framework core. The schema SHALL be the source of truth for what is stored in Qdrant; no adapter may write payload fields outside it. |
+| **F-M.2** | The payload SHALL distinguish five kinds of metadata: **source** (intrinsic to the document), **structural** (location within the document), **provenance** (which adapter + version + config produced it), **grouping** (`work_id`, `content_type`, tags), and **operational** (manifest state). Operational metadata SHALL live in the manifest only and SHALL NOT enter the Qdrant payload. |
+| **F-M.3** | The payload SHALL consist of a **common core** present on every chunk (including `chunk_id`, `work_id`, `content_type`, `source_hash`, `provenance`) plus a **content-type-specific block** (e.g. `BookMeta`, `PaperMeta`, `CodeMeta`) selected by `content_type`. Adding a new content type SHALL be additive — no existing payloads change. |
+| **F-M.4** | The framework SHALL fix the set of Qdrant-indexed (filterable) payload fields at collection-creation time. At minimum these SHALL include `content_type` and `work_id`. |
+| **F-M.5** | A **Work** is a named grouping of Documents that share provenance (e.g. a book and its example-code repository). Works are metadata-only: Documents MAY declare a `work_id` in the ingest manifest; same-Work Documents SHALL be processed independently per F-1.3 and joined only at query time via payload filters. There SHALL be no Work-level pipeline stage. |
+| **F-M.6** | Every chunk's `provenance` SHALL record the adapter name, version, and config hash for each upstream stage. The recorded provenance SHALL match the cache keys that produced the chunk (per F-5.1), so a chunk's payload unambiguously identifies what would need to invalidate to re-derive it. |
 
 ### 3.7 Operations
 
 | ID | Requirement |
 |---|---|
-| **F-7.1** | The framework SHALL provide a CLI with at minimum: `ingest`, `status`, `serve`, `snapshot`, `restore`. |
+| **F-7.1** | The framework SHALL provide a CLI with at minimum: `ingest`, `remove`, `status`, `start`, `stop`, `restart`, `snapshot`, `restore`. |
 | **F-7.2** | The CLI SHALL accept a single config file (TOML) describing one collection. No global state. |
-| **F-7.3** | The framework SHALL provide a snapshot mechanism that triggers Qdrant's native snapshot API and copies the resulting file to a configurable path (typically a NAS mount). |
+| **F-7.3** | The framework SHALL provide a snapshot mechanism that triggers Qdrant's native snapshot API and copies the resulting file to a configurable NAS path. Snapshots SHALL use Qdrant's incremental form where supported. A rolling retention policy SHALL be configurable (e.g. retain last *N* snapshots), and the framework SHALL prune older snapshots accordingly. |
 | **F-7.4** | All long-running operations SHALL emit structured progress (one line per Document or stage transition) suitable for tail-grepping. |
+
+### 3.8 Fleet management
+
+| ID | Requirement |
+|---|---|
+| **F-9.1** | The framework SHALL maintain a registry of collections on the host: name, config path, MCP port, last-known status, and last-ingest timestamp. The registry SHALL be a single small file on the host (e.g. SQLite under `/var/lib/librarian/`). |
+| **F-9.2** | The CLI SHALL provide `start <collection>`, `stop <collection>`, `restart <collection>`, and `status`. `status` SHALL list all registered collections with running/stopped state, port, uptime, and Qdrant target. |
+| **F-9.3** | Starting a collection SHALL allocate a non-conflicting MCP port (deterministic from config, or dynamically assigned and recorded in the registry) without affecting other running collections. |
+| **F-9.4** | `start` and `stop` SHALL be idempotent: starting a running collection is a no-op; stopping a stopped collection is a no-op. Both SHALL return non-zero on actual failure. |
 
 ## 4. Quality Attributes (drivers)
 
-| ID | QA | Concrete acceptance scenario |
-|---|---|---|
-| **QA-1** | **Modifiability** | Adding a new content type (e.g. *lab notebooks*) involves implementing 2–3 protocols and registering them; **no changes to core or pipeline**. ≤ 1 day of work for a new contributor. |
-| **QA-2** | **Modifiability** | Swapping an embedder (OpenAI → local BGE-M3 on Turbo) requires a new adapter class plus one config line. Re-running uses cache for extraction and chunking; only embedding and indexing run. |
-| **QA-3** | **Testability** | Each stage runs as a pure function in unit tests using in-memory stub adapters. **No Qdrant, no internet** required for `pytest`. Integration tests run against containerised Qdrant. |
-| **QA-4** | **Reusability** | A new subject collection requires writing one TOML config and pointing at a content directory. Zero code changes. |
-| **QA-5** | **Reliability** | One malformed PDF in a 500-document batch results in one manifest row marked failed; the other 499 complete and are queryable. No partial writes corrupt the collection. |
-| **QA-6** | **Deployability** | A user on Mac runs ingestion, a user on Turbo runs ingestion, both reach the same Qdrant on Turbo and the same shared cache on NAS. Same code, same config style, no environment-specific branches. |
-| **QA-7** | **Observability** | The manifest answers "what happened to document X" in a single SQL query: which stages ran, which cache hit, which failed and why. |
+Three drivers shape the architecture. Testability and modularity are universal
+software-engineering concerns and are not listed as drivers; performance,
+observability, and deployability are tracked as concerns in §4.4.
+
+Each driver is captured as one or more six-part scenarios per SAIP §3.3:
+*source · stimulus · environment · artifact · response · response measure*.
+
+### 4.1 Modifiability — embedder/model swap
+
+The reason `librarian` exists. The user must be able to experiment with
+different embedding models on the same corpus without re-extracting or
+re-chunking source material.
+
+**QA-M1 · Swap to a different hosted embedder**
+
+| | |
+|---|---|
+| Source | Researcher (the operator) |
+| Stimulus | Decides to replace the current text embedder with a different provider/model (e.g. OpenAI `text-embedding-3-large` → Voyage `voyage-3`) |
+| Environment | A populated collection exists; cache and manifest are intact |
+| Artifact | The framework's embedder adapter layer + config |
+| Response | Operator implements (or selects an existing) Embedder adapter and changes one config line; re-running ingestion reuses cached *extract* and *chunk* outputs and re-runs only *embed* and *index* |
+| Response measure | No core or pipeline code changes. Cache hit rate for extract+chunk = 100 % on unchanged documents. Wall-clock for re-ingest is bounded by embedding throughput, not by re-extraction. |
+
+**QA-M2 · Swap to a self-hosted local model**
+
+| | |
+|---|---|
+| Source | Researcher |
+| Stimulus | Decides to switch from a hosted API to a local model running on Turbo's GPU (e.g. BGE-M3) |
+| Environment | Local model is reachable on Turbo; Qdrant and the local cache are unchanged |
+| Artifact | Embedder adapter layer |
+| Response | A new Embedder adapter is registered; one config line changes; ingest proceeds |
+| Response measure | Zero changes to core, pipeline, manifest, or cache key formula. Other content types' embedders are unaffected. |
+
+### 4.2 Fault tolerance — per-document isolation with retry and fallback
+
+A failure on one document SHALL NOT poison the rest of the batch, SHALL be
+flagged in the manifest, and SHALL be retried automatically along a configured
+fallback path.
+
+**QA-F1 · Single corrupt document in a large batch**
+
+| | |
+|---|---|
+| Source | Source corpus |
+| Stimulus | One malformed PDF in a 500-document ingest |
+| Environment | Normal serial ingestion (per F-1.5) |
+| Artifact | Pipeline runner + manifest |
+| Response | The malformed document is flagged in the manifest with status `failed` and an error message; the remaining 499 documents are processed and indexed; no partial point writes appear in Qdrant for the failed document |
+| Response measure | Other documents' success rate unaffected. Manifest answers "what failed and why" in one query. |
+
+**QA-F2 · Transient infrastructure failure with fallback**
+
+| | |
+|---|---|
+| Source | Embedder backend |
+| Stimulus | GPU embedder fails on a document (e.g. CUDA OOM, transient API 5xx) |
+| Environment | A fallback path is configured (e.g. CPU embedder, alternative provider) |
+| Artifact | Pipeline runner + embedder adapter chain |
+| Response | The framework retries on the fallback; on success, the manifest row is marked `recovered_via_fallback` with both attempts recorded; the document's chunks are indexed normally |
+| Response measure | Zero operator intervention required. Recovery happens within the same ingestion run. If the fallback also fails, status becomes `failed` with both error messages preserved. |
+
+### 4.3 Operability — multi-collection fleet, remote clients, single source of truth
+
+`librarian` runs as a managed fleet on a single host (Turbo). Multiple
+collections (e.g. `software`, `particle-physics`) coexist. There are no local
+database replicas — clients reach the shared store over the network.
+
+**QA-O1 · Start a new collection alongside running ones**
+
+| | |
+|---|---|
+| Source | Operator (possibly remote, over Tailscale/SSH) |
+| Stimulus | Runs `librarian start particle-physics` while `software` is already running |
+| Environment | Turbo is up; Qdrant is running; `software` MCP server is on its assigned port |
+| Artifact | The librarian fleet supervisor on Turbo |
+| Response | A new MCP server process for `particle-physics` is started on a non-conflicting port, registered, and health-checked; the running `software` server is unaffected |
+| Response measure | Operation completes in < 5 s. `librarian status` lists both collections with correct ports, uptime, and Qdrant target. No port collisions. |
+
+**QA-O2 · Remote client access without local replicas**
+
+| | |
+|---|---|
+| Source | MCP client (Claude Code on Mac, future laptop) |
+| Stimulus | Issues a search query against an MCP server on Turbo |
+| Environment | Client is on the same Tailscale network; no local copy of Qdrant or cache |
+| Artifact | MCP server + Qdrant on Turbo |
+| Response | Query is served from the canonical Qdrant on Turbo; results reflect the latest ingestion |
+| Response measure | All clients see identical results within the same ingestion session. No data file is copied to client hosts. |
+
+**QA-O3 · Backup-driven storage efficiency**
+
+| | |
+|---|---|
+| Source | Scheduled backup job |
+| Stimulus | Periodic snapshot of a collection |
+| Environment | Collection has had incremental ingest since last snapshot |
+| Artifact | Snapshot tooling + NAS storage |
+| Response | The framework writes a new snapshot artifact and retains a rolling window of prior snapshots; storage growth on NAS is bounded by the rolling-window policy, not by linear accumulation |
+| Response measure | NAS storage occupied by snapshots stays within a configurable budget (e.g. last *N* snapshots retained). Restore from any retained snapshot succeeds. |
+
+### 4.4 Concerns (tracked, not architecture-driving)
+
+- **Performance.** No latency target for v1. GPU memory limits force serial document processing (F-1.5); no other performance properties shape the architecture.
+- **Observability.** Falls out of having a manifest (F-5.3). Single-SQL-query answer to "what happened to document X" is sufficient.
+- **Testability.** Universal concern; satisfied by the adapter-protocol surface (F-2.3) which already permits in-memory stub implementations.
+- **Cost.** Embedding API spend is acceptable as-is; no architectural decisions hang on it.
 
 ## 5. Constraints
 
 - **C-1** Qdrant is the only vector backend supported in v1. (ASI standard.)
-- **C-2** Python ≥ 3.12.
+- **C-2** Implementation language: Rust (stable channel). Python may be present at runtime only as an extractor-adapter dependency (e.g. shelling out to GROBID/Marker). See ADR-0003.
 - **C-3** Must run unchanged on macOS and Linux (Mac, Turbo).
 - **C-4** Query exposure is via MCP server in v1. A REST/HTTP frontend is not in v1 but the design must not preclude one being added later.
 
@@ -156,4 +273,3 @@ After step 3, v1 is done.
 
 1. Is the **manifest curation step** (turning a directory of files into the input manifest the framework consumes) in scope? Currently treated as the user's responsibility (out of scope), but a thin "scan a directory and emit a starter manifest" tool is small and might belong here.
 2. Is **F-7.3 (snapshot/restore)** core-framework or operational sidecar? Currently in scope as core; could be a separate `librarian-ops` package.
-3. Is **F-6 (verification hook)** required for v1, or deferred? Carrying it over from `paper_sweep` lessons argues for v1; YAGNI argues for later.

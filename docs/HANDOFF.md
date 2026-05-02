@@ -48,9 +48,9 @@ re-read this section before starting over.
 | Single Qdrant or many | **One Qdrant instance, many collections.** | Operational simplicity; collections are independent in Qdrant anyway. |
 | Embedding strategy | **Hybrid (option C from brainstorm).** Every chunk has a primary `text` vector (one unified search space across the whole collection). Code chunks additionally have a `code` vector for specialised retrieval. Multimodal added later as a third optional vector. | User wants both unified discovery AND specialised retrieval where it matters. |
 | v1 embedders | **OpenAI `text-embedding-3-large` for text; Voyage `voyage-code-3` for code.** | What user has API access to today. Replaceable via adapter swap (e.g. local BGE-M3 on Turbo) when desired. |
-| Caching | **Per-stage content-addressed cache, NAS-hosted.** Stages: extracted-text, chunks, embeddings. Keys: `(source_hash, adapter_version)`. | User explicitly named the rework problem. Shared NAS cache also makes the pipeline machine-agnostic. |
+| Caching | **Per-stage content-addressed cache on the ingest host's local disk (Turbo).** Stages: extracted-text, chunks, embeddings. Keys: `(source_hash, adapter_version)`. | Cache is hot-path I/O; keep it local. NAS reserved for snapshot backups. |
 | State | **One SQLite manifest per collection**, single file. Source of truth for resumes/retries. | Simpler than the current `acquisition_state.json` JSON-blob pattern; queryable. |
-| Deployment | **Qdrant on Turbo, snapshots to NAS, query clients (Claude Code on Mac) reach Turbo via Tailscale.** Both Mac and Turbo can run ingestion against the shared cache. | User's stated multi-machine workflow. Co-locates ingestion with GPU. |
+| Deployment | **Everything stateful on Turbo** (Qdrant, supervisor, collection servers, cache, manifests, fleet registry). NAS receives snapshot backups via one-shot push. Clients (Claude Code on Mac) reach Turbo via Tailscale; ingest runs on Turbo. | Co-locates ingestion with GPU; single source of truth for QA-O2. |
 | Query exposure (v1) | **MCP server only.** REST/HTTP frontend is designed-for but deferred. | Claude Code is the primary consumer right now. |
 | Phasing | **Toolchain first, full ingestions last.** Implement adapters for `book` (text), `paper` (text), `code` against 1–2 test subjects per type. *Then* multimodal-papers. *Then* run full ingestions: books → particle-physics papers → HEP code. | Avoids re-processing source bytes when a new modality lands. User's explicit constraint. |
 
@@ -114,7 +114,7 @@ quality attributes — full table in `requirements.md` §"Tactic / Pattern Selec
 
 - **Mac (this machine):** dev box, has Claude Code, currently runs Qdrant on `:6333` (books) and `:6336` (code-mcp pilot). Will eventually only run query clients.
 - **Turbo:** GPU server. Will host the canonical Qdrant for `librarian` collections. Currently used ad-hoc for embedding work via SSH (see `~/.claude/projects/.../memory/cw-ingest-paper-to-library.md`).
-- **NAS:** shared filesystem. Will host the per-stage cache and the snapshots backup target. Mounted from both Mac and Turbo.
+- **NAS:** snapshot backup target only. Snapshots are pushed via HTTPS / SCP from Turbo; not mounted. The per-stage cache lives on Turbo's local disk, not on NAS.
 - **Books MCP** lives in `~/Documents/books/mcp-server`; its `SCHEMA.md` is the most useful schema reference.
 - **Particle-detector papers session** ended with commit `2e0d046` on the `main` branch of `~/Documents/ParticleDetectorPapers/`. That session left behind the 280 PDFs, the acquisition tooling (which we are *not* lifting into `librarian`), and the conversational lessons captured in §3 above.
 
