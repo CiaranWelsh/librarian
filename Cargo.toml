@@ -13,6 +13,7 @@ members = [
     "crates/adapter-extractor-pdf",
     "crates/adapter-chunker-blankline",
     "crates/adapter-embedder-stub",
+    "crates/adapter-embedder-openai",
     "crates/walking-skeleton",
 ]
 
@@ -34,6 +35,7 @@ adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
 adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
+adapter-embedder-openai = { path = "crates/adapter-embedder-openai" }
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
@@ -47,3 +49,5 @@ uuid = { version = "1", features = ["v5"] }
 serde_json = "1"
 lopdf = "0.34"
 printpdf = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+mockito = "1"
