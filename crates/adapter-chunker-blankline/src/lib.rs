@@ -1,6 +1,6 @@
 use librarian_domain::{
-    AdapterIdentity, BookMeta, Chunk, ChunkId, ChunkPayload, Chunker, ConfigHash, Document,
-    ExtractedText, Provenance, StageVersion,
+    AdapterIdentity, BookMeta, Chunk, ChunkId, ChunkPayload, Chunker, CodeMeta, ConfigHash,
+    ContentType, Document, ExtractedText, PaperMeta, Provenance, StageVersion,
 };
 
 /// Splits the concatenated extracted text on blank lines.
@@ -32,36 +32,58 @@ impl Chunker for BlankLineChunker {
         if text.spans.is_empty() {
             return Err(BlankLineChunkError);
         }
-        let joined: String = text
-            .spans
-            .iter()
-            .map(|s| s.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let title = doc
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
 
         let mut chunks = Vec::new();
-        for (idx, para) in joined
-            .split("\n\n")
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .enumerate()
-        {
-            chunks.push(Chunk {
-                chunk_id: ChunkId(format!("{}#{}", doc.source_id.0, idx)),
-                source_id: doc.source_id.clone(),
-                chunk_index: idx as u32,
-                text: para.to_string(),
-                payload: ChunkPayload::Book(BookMeta {
-                    title: doc.path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string(),
-                    author: None,
-                    chapter: None,
-                    section: None,
-                    page: None,
-                }),
-                provenance: Provenance::default(),
-            });
+        let mut idx: u32 = 0;
+        for span in &text.spans {
+            for para in span.text.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
+                chunks.push(Chunk {
+                    chunk_id: ChunkId(format!("{}#{}", doc.source_id.0, idx)),
+                    source_id: doc.source_id.clone(),
+                    chunk_index: idx,
+                    text: para.to_string(),
+                    payload: payload_for(doc, &title, span.page),
+                    provenance: Provenance::default(),
+                });
+                idx += 1;
+            }
+        }
+        if chunks.is_empty() {
+            return Err(BlankLineChunkError);
         }
         Ok(chunks)
+    }
+}
+
+fn payload_for(doc: &Document, title: &str, page: Option<u32>) -> ChunkPayload {
+    match doc.content_type {
+        ContentType::Book => ChunkPayload::Book(BookMeta {
+            title: title.to_string(),
+            author: None,
+            chapter: None,
+            section: None,
+            page,
+        }),
+        ContentType::Paper => ChunkPayload::Paper(PaperMeta {
+            title: title.to_string(),
+            authors: vec![],
+            section: None,
+            page_start: page,
+            page_end: page,
+        }),
+        ContentType::Code => ChunkPayload::Code(CodeMeta {
+            repo: None,
+            commit: None,
+            file_path: doc.path.display().to_string(),
+            language: None,
+            symbol: None,
+        }),
     }
 }
 

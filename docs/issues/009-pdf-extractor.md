@@ -8,7 +8,7 @@ First real-world `Extractor` adapter: text PDFs (book / paper). Replaces the tri
 
 ## Acceptance criteria
 
-- `adapter-extractor-pdf` crate; uses `pdfium-render` as the v1 backend (subprocess fallback deferred until a corpus actually demands it).
+- `adapter-extractor-pdf` crate; uses `lopdf` (pure Rust, no system deps) as the v1 backend. `pdfium-render` and subprocess fallbacks deferred until a corpus actually demands them.
 - Produces `ExtractedText` with usable `TextSpan`s — at minimum, headings and paragraphs distinguishable for the chunker.
 - Page numbers preserved on each span.
 - Populates `BookMeta` (title, author, chapter, section, page) for `ContentType::Book` and `PaperMeta` (title, authors, page_start, page_end, section) for `ContentType::Paper` per F-M.3.
