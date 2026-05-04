@@ -16,6 +16,7 @@ members = [
     "crates/adapter-embedder-openai",
     "crates/adapter-embedder-fallback",
     "crates/walking-skeleton",
+    "crates/cli",
 ]
 
 [workspace.package]
@@ -53,3 +54,6 @@ lopdf = "0.34"
 printpdf = "0.7"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 mockito = "1"
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+walkdir = "2"
