@@ -1,0 +1,29 @@
+@startuml pipeline-ports
+' Interface design — pass 1: pipeline stage ports.
+' The four traits live in librarian-domain. Adapters outside the domain
+' implement them. Every stage : AdapterIdentity (name / version /
+' config_hash) — used by the runner to derive CacheKey.
+
+skinparam shadowing false
+skinparam defaultFontName "Helvetica"
+skinparam ArrowColor #444
+
+package "librarian-domain" {
+  interface Extractor
+  interface Chunker
+  interface Embedder
+  interface Indexer
+
+  Extractor -right-> Chunker  : ExtractedText
+  Chunker   -right-> Embedder : Vec<Chunk>
+  Embedder  -right-> Indexer  : Vec<Vector>
+
+  note top of Extractor : extract(Document)\n-> ExtractedText
+  note top of Chunker   : chunk(ExtractedText)\n-> Vec<Chunk>
+  note top of Embedder  : embed(&[ChunkText])\n-> Vec<Vector>\nError: Recoverable | Terminal
+  note top of Indexer   : upsert / replace /\ndelete_by_source_id
+}
+
+note bottom : All four : **AdapterIdentity** — name() / version() / config_hash()\nAdapter crates outside librarian-domain provide the implementations.
+
+@enduml

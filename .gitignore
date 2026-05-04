@@ -1,16 +1,11 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-dist/
-.venv/
-venv/
+# Rust
+/target/
+**/*.rs.bk
+
+# Ephemeral working state (work-stack etc.)
+docs/unstaged/
 
 # Tooling
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .coverage
 htmlcov/
 
