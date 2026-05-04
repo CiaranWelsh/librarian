@@ -3,6 +3,7 @@
 //! Adapter dispatch uses generics, no `Box<dyn Trait>` (per memory rule).
 
 mod config;
+mod fleet;
 
 use adapter_cache_fs::FsCache;
 use adapter_chunker_blankline::BlankLineChunker;
@@ -43,20 +44,21 @@ enum Cmd {
         #[arg(long)] config: PathBuf,
         #[arg(long = "source-id")] source_id: String,
     },
-    /// Show collection name and current point count.
+    /// Without --config: fleet status (all collections in registry).
+    /// With --config: single-collection point count + manifest summary.
     Status {
-        #[arg(long)] config: PathBuf,
+        #[arg(long)] config: Option<PathBuf>,
     },
-    /// Snapshot the collection (slice 014 stub).
+    /// Snapshot the collection.
     Snapshot { #[arg(long)] config: PathBuf },
-    /// Restore from snapshot id (slice 014 stub).
+    /// Restore from snapshot id.
     Restore { #[arg(long)] config: PathBuf, snapshot_id: String },
-    /// Start the per-collection MCP server (slice 015 stub).
-    Start   { #[arg(long)] config: PathBuf },
-    /// Stop the per-collection MCP server (slice 015 stub).
-    Stop    { #[arg(long)] config: PathBuf },
-    /// Restart the per-collection MCP server (slice 015 stub).
-    Restart { #[arg(long)] config: PathBuf },
+    /// Start a per-collection MCP server, registered under `name`.
+    Start   { name: String, #[arg(long)] config: PathBuf },
+    /// Stop a registered MCP server by name.
+    Stop    { name: String },
+    /// Restart a registered MCP server by name.
+    Restart { name: String, #[arg(long)] config: PathBuf },
 }
 
 fn main() -> ExitCode {
@@ -64,13 +66,13 @@ fn main() -> ExitCode {
     let result = match cli.cmd {
         Cmd::Ingest { config, input } => cmd_ingest(&config, &input),
         Cmd::Remove { config, source_id } => cmd_remove(&config, &source_id),
-        Cmd::Status { config } => cmd_status(&config),
+        Cmd::Status { config: Some(c) } => cmd_status_collection(&c),
+        Cmd::Status { config: None } => cmd_fleet_status(),
         Cmd::Snapshot { config } => cmd_snapshot(&config),
         Cmd::Restore { config, snapshot_id } => cmd_restore(&config, &snapshot_id),
-        Cmd::Start { .. } | Cmd::Stop { .. } | Cmd::Restart { .. } => {
-            eprintln!("not yet implemented (delivered in slice 015)");
-            return ExitCode::from(64);
-        }
+        Cmd::Start { name, config } => cmd_start(&name, &config),
+        Cmd::Stop { name } => cmd_stop(&name),
+        Cmd::Restart { name, config } => cmd_restart(&name, &config),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -156,7 +158,7 @@ fn cmd_remove(config_path: &Path, source_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_status(config_path: &Path) -> Result<(), String> {
+fn cmd_status_collection(config_path: &Path) -> Result<(), String> {
     let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
     let dim = match &cfg.embedder {
         EmbedderConfig::Stub => StubEmbedder::new().dimension() as u64,
@@ -204,6 +206,44 @@ fn make_doc(path: &Path, ct: ContentType) -> Result<Document, String> {
         path: path.to_path_buf(),
         work_id: None,
     })
+}
+
+fn cmd_fleet_status() -> Result<(), String> {
+    let reg = fleet::Registry::open(&fleet::registry_path())?;
+    let rows = fleet::fleet_status(&reg)?;
+    if rows.is_empty() {
+        println!("(empty fleet)");
+        return Ok(());
+    }
+    for (r, uptime) in rows {
+        println!(
+            "{}\tport={}\tstatus={}\tuptime={}s\tpid={}",
+            r.name, r.port, r.status, uptime,
+            r.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".into()),
+        );
+    }
+    Ok(())
+}
+
+fn cmd_start(name: &str, config_path: &Path) -> Result<(), String> {
+    let reg = fleet::Registry::open(&fleet::registry_path())?;
+    let msg = fleet::start(&reg, name, config_path)?;
+    println!("{msg}");
+    Ok(())
+}
+
+fn cmd_stop(name: &str) -> Result<(), String> {
+    let reg = fleet::Registry::open(&fleet::registry_path())?;
+    let msg = fleet::stop(&reg, name)?;
+    println!("{msg}");
+    Ok(())
+}
+
+fn cmd_restart(name: &str, config_path: &Path) -> Result<(), String> {
+    let reg = fleet::Registry::open(&fleet::registry_path())?;
+    let msg = fleet::restart(&reg, name, config_path)?;
+    println!("{msg}");
+    Ok(())
 }
 
 fn snapshot_orchestrator(cfg: &Config) -> Result<SnapshotOrchestrator<QdrantNasSnapshotter, SqliteManifest>, String> {

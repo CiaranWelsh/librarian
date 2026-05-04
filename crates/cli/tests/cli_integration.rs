@@ -118,16 +118,8 @@ fn malformed_config_yields_parse_error() {
         .stderr(contains("config parse"));
 }
 
-#[test]
-fn unimplemented_subcommands_exit_with_distinct_code() {
-    let dir = TempDir::new().unwrap();
-    let cfg = write_config(dir.path(), &unique_collection("stub"));
-
-    Command::cargo_bin("librarian").unwrap()
-        .args(["start", "--config"]).arg(&cfg)
-        .assert()
-        .code(64);
-}
+// `start`/`stop`/`restart` are now implemented (slice 015). No remaining
+// stub subcommands carry a distinct exit code.
 
 #[test]
 fn snapshot_invokes_orchestrator_and_prints_id() {
