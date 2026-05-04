@@ -176,10 +176,31 @@ where
                 match self.pipeline.embedder.embed(&texts) {
                     Ok(v) => {
                         self.store(&embed_key, &v);
-                        self.record(sid, "embed", ManifestStatus::Success, None, Some(&embed_key));
+                        // Slice 011: if the embedder is a fallback combinator and
+                        // recovered, record RecoveredViaFallback with the primary error.
+                        match self.pipeline.embedder.last_event() {
+                            Some(ev) if ev.recovered => {
+                                let msg = format!("primary recoverable: {}", ev.primary_error);
+                                self.record(sid, "embed", ManifestStatus::RecoveredViaFallback,
+                                            Some(&msg), Some(&embed_key));
+                            }
+                            _ => self.record(sid, "embed", ManifestStatus::Success, None, Some(&embed_key)),
+                        }
                         v
                     }
-                    Err(e) => return self.fail(sid, "embed", e.to_string()),
+                    Err(e) => {
+                        // Slice 011: if a fallback combinator left an event with both
+                        // errors, record the combined Failed message.
+                        let combined = match self.pipeline.embedder.last_event() {
+                            Some(ev) => format!(
+                                "primary: {}; fallback: {}",
+                                ev.primary_error,
+                                ev.fallback_error.unwrap_or_else(|| "n/a".into()),
+                            ),
+                            None => e.to_string(),
+                        };
+                        return self.fail(sid, "embed", combined);
+                    }
                 }
             }
         };

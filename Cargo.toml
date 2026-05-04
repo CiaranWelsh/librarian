@@ -14,6 +14,7 @@ members = [
     "crates/adapter-chunker-blankline",
     "crates/adapter-embedder-stub",
     "crates/adapter-embedder-openai",
+    "crates/adapter-embedder-fallback",
     "crates/walking-skeleton",
 ]
 
@@ -36,6 +37,7 @@ adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
 adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
 adapter-embedder-openai = { path = "crates/adapter-embedder-openai" }
+adapter-embedder-fallback = { path = "crates/adapter-embedder-fallback" }
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"

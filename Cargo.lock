@@ -28,6 +28,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-embedder-fallback"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+]
+
+[[package]]
 name = "adapter-embedder-openai"
 version = "0.1.0"
 dependencies = [
@@ -1193,6 +1200,7 @@ dependencies = [
  "adapter-cache-fs",
  "adapter-cache-mem",
  "adapter-chunker-blankline",
+ "adapter-embedder-fallback",
  "adapter-embedder-stub",
  "adapter-extractor-text",
  "adapter-indexer-mem",

@@ -21,3 +21,4 @@ adapter-embedder-stub.workspace = true
 adapter-indexer-qdrant.workspace = true
 adapter-cache-fs.workspace = true
 tempfile.workspace = true
+adapter-embedder-fallback.workspace = true
