@@ -8,6 +8,7 @@ members = [
     "crates/adapter-manifest-mem",
     "crates/adapter-manifest-sqlite",
     "crates/adapter-indexer-mem",
+    "crates/adapter-indexer-qdrant",
     "crates/adapter-extractor-text",
     "crates/adapter-chunker-blankline",
     "crates/adapter-embedder-stub",
@@ -27,6 +28,7 @@ adapter-cache-fs = { path = "crates/adapter-cache-fs" }
 adapter-manifest-mem = { path = "crates/adapter-manifest-mem" }
 adapter-manifest-sqlite = { path = "crates/adapter-manifest-sqlite" }
 adapter-indexer-mem = { path = "crates/adapter-indexer-mem" }
+adapter-indexer-qdrant = { path = "crates/adapter-indexer-qdrant" }
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
 adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
@@ -37,3 +39,7 @@ hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
 rusqlite = { version = "0.31", features = ["bundled"] }
+qdrant-client = "1.13"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+uuid = { version = "1", features = ["v5"] }
+serde_json = "1"
