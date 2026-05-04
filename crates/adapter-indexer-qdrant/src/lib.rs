@@ -42,12 +42,27 @@ pub struct QdrantIndexer {
     client: Qdrant,
     collection: String,
     dim: u64,
+    /// Optional second named vector slot ("code" / "figure" / etc.). When Some,
+    /// the slot is created at collection-init time and `upsert_named` may
+    /// populate it for any chunk.
+    extra_slot: Option<(String, u64)>,
 }
 
 impl QdrantIndexer {
     /// Open a connection and ensure the collection exists with a `text` named
     /// vector slot of dimension `dim`. Idempotent.
     pub fn open(url: &str, collection: &str, dim: u64) -> Result<Self, QdrantError> {
+        Self::open_with_extra_slot(url, collection, dim, None)
+    }
+
+    /// Open with an optional second named-vector slot reserved at collection
+    /// creation time (slice 016: `("code", code_dim)`; slice 017: `figure`).
+    pub fn open_with_extra_slot(
+        url: &str,
+        collection: &str,
+        dim: u64,
+        extra_slot: Option<(String, u64)>,
+    ) -> Result<Self, QdrantError> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -58,6 +73,7 @@ impl QdrantIndexer {
             client,
             collection: collection.to_string(),
             dim,
+            extra_slot,
         };
         me.ensure_collection()?;
         Ok(me)
@@ -80,6 +96,13 @@ impl QdrantIndexer {
                         ..Default::default()
                     },
                 );
+                if let Some((name, dim)) = &self.extra_slot {
+                    params.insert(name.clone(), VectorParams {
+                        size: *dim,
+                        distance: Distance::Cosine.into(),
+                        ..Default::default()
+                    });
+                }
                 let cfg = VectorsConfig {
                     config: Some(VectorsCfg::ParamsMap(VectorParamsMap { map: params })),
                 };
@@ -193,6 +216,56 @@ impl QdrantIndexer {
                 .await
                 .map_err(QdrantError::client)?;
             Ok(r.result.map(|c| c.count).unwrap_or(0))
+        })
+    }
+
+    /// Upsert chunks with multiple named vectors per chunk. `named_vectors` maps
+    /// slot name (e.g. `"text"`, `"code"`) to a `Vec<Vector>` of equal length.
+    /// All slots must have len == chunks.len(). Use `Vec<f32>::new()` to skip
+    /// a slot for one chunk — Qdrant will still record the point.
+    pub fn upsert_named(
+        &self,
+        chunks: &[Chunk],
+        named_vectors: std::collections::BTreeMap<String, Vec<Vector>>,
+    ) -> Result<(), QdrantError> {
+        if chunks.is_empty() { return Ok(()); }
+        for (slot, vs) in &named_vectors {
+            if vs.len() != chunks.len() {
+                return Err(QdrantError::LengthMismatch {
+                    chunks: chunks.len(),
+                    vectors: vs.len(),
+                });
+            }
+            let _ = slot; // slot name is for the loop only
+        }
+        let points: Vec<PointStruct> = chunks.iter().enumerate().map(|(i, c)| {
+            let id = PointId {
+                point_id_options: Some(PointIdOptions::Uuid(
+                    point_id(&c.source_id, c.chunk_index).to_string(),
+                )),
+            };
+            let mut named = HashMap::new();
+            for (slot, vs) in &named_vectors {
+                if !vs[i].is_empty() {
+                    named.insert(slot.clone(), QVector::from(vs[i].clone()));
+                }
+            }
+            let vectors = qdrant_client::qdrant::Vectors {
+                vectors_options: Some(VectorsOptions::Vectors(NamedVectors { vectors: named })),
+            };
+            PointStruct {
+                id: Some(id),
+                vectors: Some(vectors),
+                payload: build_payload(c).into(),
+            }
+        }).collect();
+
+        self.rt.block_on(async {
+            self.client
+                .upsert_points(UpsertPointsBuilder::new(&self.collection, points).wait(true))
+                .await
+                .map_err(QdrantError::client)?;
+            Ok::<_, QdrantError>(())
         })
     }
 

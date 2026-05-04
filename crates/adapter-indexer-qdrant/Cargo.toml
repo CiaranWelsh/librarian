@@ -13,3 +13,8 @@ tokio.workspace = true
 uuid.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+adapter-chunker-code.workspace = true
+adapter-extractor-code.workspace = true
+tempfile.workspace = true

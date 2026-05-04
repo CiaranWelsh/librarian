@@ -28,6 +28,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-chunker-code"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "adapter-embedder-fallback"
 version = "0.1.0"
 dependencies = [
@@ -52,6 +60,27 @@ version = "0.1.0"
 dependencies = [
  "librarian-domain",
  "sha2",
+]
+
+[[package]]
+name = "adapter-embedder-voyage"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "adapter-extractor-code"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -91,10 +120,13 @@ dependencies = [
 name = "adapter-indexer-qdrant"
 version = "0.1.0"
 dependencies = [
+ "adapter-chunker-code",
+ "adapter-extractor-code",
  "librarian-domain",
  "qdrant-client",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "uuid",
