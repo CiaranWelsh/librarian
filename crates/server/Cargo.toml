@@ -1,0 +1,32 @@
+[package]
+name = "librarian-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "librarian-collection"
+path = "src/main.rs"
+
+[dependencies]
+librarian-domain.workspace = true
+adapter-manifest-sqlite.workspace = true
+adapter-indexer-qdrant.workspace = true
+adapter-embedder-stub.workspace = true
+adapter-embedder-openai.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+adapter-cache-mem.workspace = true
+adapter-chunker-blankline.workspace = true
+adapter-extractor-text.workspace = true
+adapter-cache-fs.workspace = true
+librarian-runner.workspace = true
+sha2.workspace = true
+hex.workspace = true

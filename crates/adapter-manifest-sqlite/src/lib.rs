@@ -149,6 +149,26 @@ fn chrono_now() -> i64 {
         .unwrap_or(0)
 }
 
+/// Distinct source_ids that have at least one Success or Cached row.
+/// Used by the MCP server's `list_documents` (slice 013).
+pub fn distinct_ingested_sources(
+    store: &SqliteManifest,
+) -> Result<Vec<SourceId>, SqliteManifestError> {
+    let g = store.conn.lock().expect("poisoned");
+    let mut stmt = g
+        .prepare(
+            "SELECT DISTINCT source_id FROM manifest \
+             WHERE status IN ('Success', 'Cached', 'RecoveredViaFallback')",
+        )
+        .map_err(SqliteManifestError::Db)?;
+    let rows = stmt
+        .query_map([], |r| Ok(SourceId(r.get::<_, String>(0)?)))
+        .map_err(SqliteManifestError::Db)?;
+    let mut out = Vec::new();
+    for r in rows { out.push(r.map_err(SqliteManifestError::Db)?); }
+    Ok(out)
+}
+
 /// Look up a single row by primary key — used by tests and downstream queries.
 pub fn get_row(
     store: &SqliteManifest,

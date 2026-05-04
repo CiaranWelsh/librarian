@@ -17,6 +17,7 @@ members = [
     "crates/adapter-embedder-fallback",
     "crates/walking-skeleton",
     "crates/cli",
+    "crates/server",
 ]
 
 [workspace.package]

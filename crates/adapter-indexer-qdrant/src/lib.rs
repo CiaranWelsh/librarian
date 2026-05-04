@@ -28,6 +28,15 @@ pub fn point_id(source_id: &SourceId, chunk_index: u32) -> uuid::Uuid {
     )
 }
 
+#[derive(Debug, Clone)]
+pub struct SearchHit {
+    pub score: f32,
+    pub source_id: String,
+    pub chunk_index: u32,
+    pub text: String,
+    pub content_type: String,
+}
+
 pub struct QdrantIndexer {
     rt: tokio::runtime::Runtime,
     client: Qdrant,
@@ -95,6 +104,66 @@ impl QdrantIndexer {
                 }
             }
             Ok::<_, QdrantError>(())
+        })
+    }
+
+    /// Semantic search using the `text` named vector. Returns up to `k` hits
+    /// ordered by cosine similarity. `filter_content_type` narrows by F-M.4.
+    pub fn search(
+        &self,
+        query: &[f32],
+        k: u64,
+        filter_content_type: Option<&str>,
+    ) -> Result<Vec<SearchHit>, QdrantError> {
+        self.rt.block_on(async {
+            use qdrant_client::qdrant::SearchPointsBuilder;
+            let mut req = SearchPointsBuilder::new(&self.collection, query.to_vec(), k)
+                .with_payload(true)
+                .vector_name("text");
+            if let Some(ct) = filter_content_type {
+                req = req.filter(Filter::must([Condition::matches("content_type", ct.to_string())]));
+            }
+            let r = self.client.search_points(req).await.map_err(QdrantError::client)?;
+            Ok(r.result.into_iter().map(|p| {
+                let payload_get = |k: &str| -> Option<String> {
+                    p.payload.get(k).and_then(|v| v.as_str().map(|s| s.to_string()))
+                };
+                SearchHit {
+                    score: p.score,
+                    source_id: payload_get("source_id").unwrap_or_default(),
+                    chunk_index: p.payload.get("chunk_index")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(0) as u32,
+                    text: payload_get("text").unwrap_or_default(),
+                    content_type: payload_get("content_type").unwrap_or_default(),
+                }
+            }).collect())
+        })
+    }
+
+    /// Scoped retrieval: chunks of `source_id` with `chunk_index` in
+    /// `[start, end)` (half-open). Returns `(chunk_index, text)` ordered.
+    pub fn get_extract(
+        &self,
+        source_id: &SourceId,
+        start: u32,
+        end: u32,
+    ) -> Result<Vec<(u32, String)>, QdrantError> {
+        self.rt.block_on(async {
+            use qdrant_client::qdrant::ScrollPointsBuilder;
+            let filter = Filter::must([Condition::matches("source_id", source_id.0.clone())]);
+            let r = self.client
+                .scroll(ScrollPointsBuilder::new(&self.collection).filter(filter).with_payload(true).limit(1024))
+                .await
+                .map_err(QdrantError::client)?;
+            let mut hits: Vec<(u32, String)> = r.result.into_iter().filter_map(|p| {
+                let idx = p.payload.get("chunk_index").and_then(|v| v.as_integer())? as u32;
+                if idx < start || idx >= end { return None; }
+                let text = p.payload.get("text").and_then(|v| v.as_str().map(|s| s.to_string()))?;
+                Some((idx, text))
+            }).collect();
+            hits.sort_by_key(|(i, _)| *i);
+            Ok(hits)
         })
     }
 
