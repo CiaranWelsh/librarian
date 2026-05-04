@@ -4,6 +4,7 @@ members = [
     "crates/librarian-domain",
     "crates/librarian-runner",
     "crates/adapter-cache-mem",
+    "crates/adapter-cache-fs",
     "crates/adapter-manifest-mem",
     "crates/adapter-indexer-mem",
     "crates/adapter-extractor-text",
@@ -21,6 +22,7 @@ rust-version = "1.75"
 librarian-domain = { path = "crates/librarian-domain" }
 librarian-runner = { path = "crates/librarian-runner" }
 adapter-cache-mem = { path = "crates/adapter-cache-mem" }
+adapter-cache-fs = { path = "crates/adapter-cache-fs" }
 adapter-manifest-mem = { path = "crates/adapter-manifest-mem" }
 adapter-indexer-mem = { path = "crates/adapter-indexer-mem" }
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
@@ -31,3 +33,4 @@ serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"
