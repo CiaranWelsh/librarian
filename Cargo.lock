@@ -3,6 +3,54 @@
 version = 3
 
 [[package]]
+name = "adapter-cache-mem"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "adapter-chunker-blankline"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "adapter-embedder-stub"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "sha2",
+]
+
+[[package]]
+name = "adapter-extractor-text"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "adapter-indexer-mem"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "adapter-manifest-mem"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -197,6 +245,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "librarian-runner"
+version = "0.1.0"
+dependencies = [
+ "adapter-cache-mem",
+ "adapter-chunker-blankline",
+ "adapter-embedder-stub",
+ "adapter-extractor-text",
+ "adapter-indexer-mem",
+ "adapter-manifest-mem",
+ "librarian-domain",
+ "thiserror",
+]
+
+[[package]]
 name = "log"
 version = "0.4.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -348,6 +410,22 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "walking-skeleton"
+version = "0.1.0"
+dependencies = [
+ "adapter-cache-mem",
+ "adapter-chunker-blankline",
+ "adapter-embedder-stub",
+ "adapter-extractor-text",
+ "adapter-indexer-mem",
+ "adapter-manifest-mem",
+ "hex",
+ "librarian-domain",
+ "librarian-runner",
+ "sha2",
+]
 
 [[package]]
 name = "wasm-bindgen"

@@ -1,0 +1,22 @@
+[package]
+name = "walking-skeleton"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "walking-skeleton"
+path = "src/main.rs"
+
+[dependencies]
+librarian-domain.workspace = true
+librarian-runner.workspace = true
+adapter-cache-mem.workspace = true
+adapter-manifest-mem.workspace = true
+adapter-indexer-mem.workspace = true
+adapter-extractor-text.workspace = true
+adapter-chunker-blankline.workspace = true
+adapter-embedder-stub.workspace = true
+sha2.workspace = true
+hex.workspace = true

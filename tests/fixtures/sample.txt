@@ -1,0 +1,5 @@
+First paragraph about hexagonal architecture.
+
+Second paragraph mentioning vector databases.
+
+Third paragraph on librarian itself.

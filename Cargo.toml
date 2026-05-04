@@ -1,6 +1,16 @@
 [workspace]
 resolver = "2"
-members = ["crates/librarian-domain"]
+members = [
+    "crates/librarian-domain",
+    "crates/librarian-runner",
+    "crates/adapter-cache-mem",
+    "crates/adapter-manifest-mem",
+    "crates/adapter-indexer-mem",
+    "crates/adapter-extractor-text",
+    "crates/adapter-chunker-blankline",
+    "crates/adapter-embedder-stub",
+    "crates/walking-skeleton",
+]
 
 [workspace.package]
 edition = "2021"
@@ -8,6 +18,14 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.75"
 
 [workspace.dependencies]
+librarian-domain = { path = "crates/librarian-domain" }
+librarian-runner = { path = "crates/librarian-runner" }
+adapter-cache-mem = { path = "crates/adapter-cache-mem" }
+adapter-manifest-mem = { path = "crates/adapter-manifest-mem" }
+adapter-indexer-mem = { path = "crates/adapter-indexer-mem" }
+adapter-extractor-text = { path = "crates/adapter-extractor-text" }
+adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
+adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
 thiserror = "1"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
