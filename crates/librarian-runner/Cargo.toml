@@ -16,3 +16,4 @@ adapter-indexer-mem.workspace = true
 adapter-extractor-text.workspace = true
 adapter-chunker-blankline.workspace = true
 adapter-embedder-stub.workspace = true
+adapter-indexer-qdrant.workspace = true

@@ -1104,6 +1104,7 @@ dependencies = [
  "adapter-embedder-stub",
  "adapter-extractor-text",
  "adapter-indexer-mem",
+ "adapter-indexer-qdrant",
  "adapter-manifest-mem",
  "librarian-domain",
  "thiserror 1.0.69",

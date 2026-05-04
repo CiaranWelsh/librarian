@@ -3,7 +3,7 @@
 
 use librarian_domain::{
     cache_key, AdapterIdentity, Chunker, Document, Embedder, Extractor, Indexer,
-    ProvenanceLink, Vector,
+    ManifestStatus, ManifestStore, ProvenanceLink, SourceId, Vector,
 };
 
 pub struct Pipeline<E, Ch, Em, Ix> {
@@ -82,6 +82,71 @@ fn link<A: AdapterIdentity>(
         stage_version: adapter.version(),
         config_hash: adapter.config_hash(),
         cache_key: key,
+    }
+}
+
+// ─── Batch runner with per-document fault boundary (slice 006) ────────────────
+
+/// Outcome of one Document inside a batch.
+#[derive(Debug, Clone)]
+pub enum Outcome {
+    Success { source_id: SourceId, chunks_indexed: usize },
+    Failed { source_id: SourceId, stage: &'static str, error: String },
+}
+
+impl Outcome {
+    pub fn source_id(&self) -> &SourceId {
+        match self { Outcome::Success { source_id, .. } | Outcome::Failed { source_id, .. } => source_id }
+    }
+    pub fn is_success(&self) -> bool { matches!(self, Outcome::Success { .. }) }
+}
+
+/// Wraps a `Pipeline` with a `ManifestStore`. `ingest_batch` catches errors at
+/// the per-Document boundary, records the outcome to the manifest, and moves on.
+pub struct BatchRunner<E, Ch, Em, Ix, M> {
+    pub pipeline: Pipeline<E, Ch, Em, Ix>,
+    pub manifest: M,
+}
+
+impl<E, Ch, Em, Ix, M> BatchRunner<E, Ch, Em, Ix, M>
+where
+    E: Extractor,
+    Ch: Chunker,
+    Em: Embedder,
+    Ix: Indexer,
+    M: ManifestStore,
+{
+    /// Run each Document in turn. A failure on one Document does not halt the
+    /// batch — the failure is recorded in the manifest and the next Document
+    /// proceeds (F-1.3, QA-F1).
+    pub fn ingest_batch(&self, docs: &[Document]) -> Vec<Outcome> {
+        docs.iter().map(|d| self.ingest_one(d)).collect()
+    }
+
+    fn ingest_one(&self, doc: &Document) -> Outcome {
+        match self.pipeline.run(doc) {
+            Ok(s) => {
+                for stage in ["extract", "chunk", "embed", "index"] {
+                    let _ = self.manifest.record(
+                        &doc.source_id, stage, ManifestStatus::Success, 1, None, None,
+                    );
+                }
+                Outcome::Success { source_id: doc.source_id.clone(), chunks_indexed: s.chunks_indexed }
+            }
+            Err(e) => {
+                let stage: &'static str = match &e {
+                    RunError::Extract(_) => "extract",
+                    RunError::Chunk(_) => "chunk",
+                    RunError::Embed(_) => "embed",
+                    RunError::Index(_) => "index",
+                };
+                let msg = e.to_string();
+                let _ = self.manifest.record(
+                    &doc.source_id, stage, ManifestStatus::Failed, 1, Some(&msg), None,
+                );
+                Outcome::Failed { source_id: doc.source_id.clone(), stage, error: msg }
+            }
+        }
     }
 }
 
