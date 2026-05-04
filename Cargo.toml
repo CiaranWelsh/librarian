@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/librarian-domain"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.75"
+
+[workspace.dependencies]
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
