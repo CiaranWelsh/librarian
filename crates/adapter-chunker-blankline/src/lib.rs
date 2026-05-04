@@ -64,3 +64,57 @@ impl Chunker for BlankLineChunker {
         Ok(chunks)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use librarian_domain::{ContentType, Document, SourceHash, SpanKind, TextSpan};
+
+    fn doc() -> Document {
+        Document {
+            source_id: librarian_domain::SourceId("s".into()),
+            source_hash: SourceHash("h".into()),
+            content_type: ContentType::Book,
+            path: "f.txt".into(),
+            work_id: None,
+        }
+    }
+
+    fn span(text: &str) -> TextSpan {
+        TextSpan { kind: SpanKind::Paragraph, text: text.into(), page: None, byte_range: 0..text.len() }
+    }
+
+    #[test]
+    fn empty_spans_errors() {
+        let r = BlankLineChunker.chunk(&doc(), ExtractedText { spans: vec![] });
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn single_paragraph_yields_one_chunk_indexed_zero() {
+        let r = BlankLineChunker.chunk(&doc(), ExtractedText { spans: vec![span("hello")] }).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].chunk_index, 0);
+        assert_eq!(r[0].text, "hello");
+    }
+
+    #[test]
+    fn three_paragraphs_yield_three_chunks_with_strict_index() {
+        let text = ExtractedText { spans: vec![span("a\n\nb\n\nc")] };
+        let r = BlankLineChunker.chunk(&doc(), text).unwrap();
+        assert_eq!(r.iter().map(|c| c.chunk_index).collect::<Vec<_>>(), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn collapses_runs_of_blank_lines() {
+        let text = ExtractedText { spans: vec![span("a\n\n\n\nb")] };
+        let r = BlankLineChunker.chunk(&doc(), text).unwrap();
+        assert_eq!(r.len(), 2);
+    }
+
+    #[test]
+    fn provenance_starts_empty() {
+        let r = BlankLineChunker.chunk(&doc(), ExtractedText { spans: vec![span("x")] }).unwrap();
+        assert!(r[0].provenance.0.is_empty(), "runner appends provenance, not chunker");
+    }
+}

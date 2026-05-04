@@ -39,3 +39,40 @@ impl Extractor for TextExtractor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use librarian_domain::{ContentType, SourceHash, SourceId};
+
+    fn doc(path: &str) -> Document {
+        Document {
+            source_id: SourceId("s".into()),
+            source_hash: SourceHash("h".into()),
+            content_type: ContentType::Book,
+            path: path.into(),
+            work_id: None,
+        }
+    }
+
+    #[test]
+    fn missing_file_yields_io_error() {
+        let r = TextExtractor.extract(&doc("/nonexistent/path.txt"));
+        assert!(matches!(r, Err(TextExtractError::Io(_))));
+    }
+
+    #[test]
+    fn reads_a_real_file() {
+        let dir = std::env::temp_dir().join(format!("librarian-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.txt");
+        std::fs::write(&p, "hello world").unwrap();
+
+        let r = TextExtractor.extract(&doc(p.to_str().unwrap())).unwrap();
+        assert_eq!(r.spans.len(), 1);
+        assert_eq!(r.spans[0].text, "hello world");
+        assert_eq!(r.spans[0].byte_range, 0..11);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

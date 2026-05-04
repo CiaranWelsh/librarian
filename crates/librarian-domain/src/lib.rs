@@ -265,3 +265,59 @@ pub trait Snapshotter: AdapterIdentity {
     fn list(&self) -> Result<Vec<SnapshotId>, Self::Error>;
     fn prune(&self, keep_last: usize) -> Result<(), Self::Error>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manifest_status_serde_roundtrip() {
+        for s in [
+            ManifestStatus::Pending,
+            ManifestStatus::Success,
+            ManifestStatus::Cached,
+            ManifestStatus::Failed,
+            ManifestStatus::RecoveredViaFallback,
+            ManifestStatus::Skipped,
+            ManifestStatus::Removed,
+        ] {
+            let json = serde_json::to_string(&s).unwrap();
+            let back: ManifestStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(s, back);
+        }
+    }
+
+    #[test]
+    fn chunk_payload_serde_preserves_variant() {
+        let cases = vec![
+            ChunkPayload::Book(BookMeta {
+                title: "t".into(), author: None, chapter: None, section: None, page: Some(3),
+            }),
+            ChunkPayload::Paper(PaperMeta {
+                title: "t".into(), authors: vec!["a".into()], section: None,
+                page_start: Some(1), page_end: Some(2),
+            }),
+            ChunkPayload::Code(CodeMeta {
+                repo: None, commit: None, file_path: "x.rs".into(),
+                language: Some("rust".into()), symbol: None,
+            }),
+        ];
+        for c in cases {
+            let json = serde_json::to_string(&c).unwrap();
+            let back: ChunkPayload = serde_json::from_str(&json).unwrap();
+            // Round-trip is structural; check discriminant via match.
+            match (&c, &back) {
+                (ChunkPayload::Book(_), ChunkPayload::Book(_))
+                | (ChunkPayload::Paper(_), ChunkPayload::Paper(_))
+                | (ChunkPayload::Code(_), ChunkPayload::Code(_)) => {}
+                _ => panic!("variant changed across serde"),
+            }
+        }
+    }
+
+    #[test]
+    fn newtype_equality_is_value_based() {
+        assert_eq!(SourceId("a".into()), SourceId("a".into()));
+        assert_ne!(SourceId("a".into()), SourceId("b".into()));
+    }
+}

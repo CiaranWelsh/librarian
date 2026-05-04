@@ -29,3 +29,31 @@ impl Cache for MemCache {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trip() {
+        let c = MemCache::new();
+        let k = CacheKey("k".into());
+        c.put(&k, b"v").unwrap();
+        assert_eq!(c.get(&k).unwrap(), Some(b"v".to_vec()));
+    }
+
+    #[test]
+    fn missing_key_is_none_not_error() {
+        let c = MemCache::new();
+        assert_eq!(c.get(&CacheKey("nope".into())).unwrap(), None);
+    }
+
+    #[test]
+    fn put_overwrites() {
+        let c = MemCache::new();
+        let k = CacheKey("k".into());
+        c.put(&k, b"a").unwrap();
+        c.put(&k, b"b").unwrap();
+        assert_eq!(c.get(&k).unwrap(), Some(b"b".to_vec()));
+    }
+}

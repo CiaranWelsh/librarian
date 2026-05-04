@@ -33,6 +33,43 @@ impl Embedder for StubEmbedder {
     fn dimension(&self) -> usize { self.dim }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_batch_is_terminal() {
+        let e = StubEmbedder::new();
+        match e.embed(&[]).unwrap_err() {
+            EmbedderError::Terminal(_) => {}
+            EmbedderError::Recoverable(_) => panic!("empty batch should be terminal"),
+        }
+    }
+
+    #[test]
+    fn deterministic_for_same_text() {
+        let e = StubEmbedder::new();
+        let a = e.embed(&["hello"]).unwrap();
+        let b = e.embed(&["hello"]).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn dimension_is_constant_across_calls() {
+        let e = StubEmbedder::new();
+        let v = e.embed(&["a", "bb", "ccc"]).unwrap();
+        assert!(v.iter().all(|x| x.len() == e.dimension()));
+    }
+
+    #[test]
+    fn one_vector_per_input_in_order() {
+        let e = StubEmbedder::new();
+        let v = e.embed(&["a", "b"]).unwrap();
+        assert_eq!(v.len(), 2);
+        assert_ne!(v[0], v[1]);
+    }
+}
+
 fn hash_to_vec(text: &str, dim: usize) -> Vector {
     let digest = Sha256::digest(text.as_bytes());
     (0..dim)
