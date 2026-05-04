@@ -16,9 +16,10 @@ Run the now-stable toolchain across the user's complete corpora, in the order sp
 
 ## Test plan
 
-- Operational: each ingestion run completes, manifest shows ≥99% Documents in `Success` / `Cached` state, failed Documents diagnosed via the manifest.
-- Acceptance: hand-crafted golden queries return expected papers/sections; mixed-content-type queries work across `book`/`paper`/`code`/`figure`.
+- **Automated** (what code can prove without your data): `crates/cli/tests/v1_acceptance.rs` drives the full lifecycle — ingest → idempotent re-ingest → update → remove → snapshot → restore → fleet start/status/stop, plus an MCP search smoke test. These run against the test Qdrant on every `cargo test`.
+- **Operational** (the slice's actual deliverable): runbook at `docs/runbooks/v1-ingestion.md`. Each ingestion run completes, manifest shows ≥99% Documents in `Success`/`Cached` state, failed Documents diagnosed via the manifest.
+- **Acceptance** (executed by the user against real corpora): hand-crafted golden queries return expected papers/sections; mixed-content-type queries work across `book`/`paper`/`code`. `figure` is stub-quality in v1 (real CLIP/vendor embedding deferred).
 
 ## Exit
 
-After this slice, v1 is done. Subsequent work is post-v1 (REST frontend, parallelism, etc.) and out of scope.
+After running the runbook against the real corpora, v1 is done. Subsequent work is post-v1 (REST frontend, parallelism, real multimodal embedding, runner-level dual-vector wiring) and out of scope.
