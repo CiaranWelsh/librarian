@@ -184,13 +184,30 @@ where
             }
         };
 
-        // ── index ── (always called; deterministic IDs make it idempotent)
-        match self.pipeline.indexer.upsert(&chunks, &vectors) {
+        // ── index ── always `replace`, not `upsert`. This makes the runner
+        // naturally handle the F-1.8 update-with-fewer-chunks case: any
+        // chunk_index that no longer exists for `source_id` is dropped.
+        // Deterministic point IDs keep this idempotent on unchanged input.
+        match self.pipeline.indexer.replace(sid, &chunks, &vectors) {
             Ok(()) => self.record(sid, "index", ManifestStatus::Success, None, None),
             Err(e) => return self.fail(sid, "index", e.to_string()),
         }
 
         Outcome::Success { source_id: sid.clone(), chunks_indexed: chunks.len() }
+    }
+
+    /// Explicit removal (F-1.9). Drops every chunk for `source_id` from the
+    /// indexer and records `ManifestStatus::Removed` for each pipeline stage.
+    /// Removing a missing source is a no-op.
+    pub fn remove(&self, source_id: &SourceId) -> Result<(), String> {
+        if let Err(e) = self.pipeline.indexer.delete_by_source_id(source_id) {
+            self.record(source_id, "index", ManifestStatus::Failed, Some(&e.to_string()), None);
+            return Err(e.to_string());
+        }
+        for stage in ["extract", "chunk", "embed", "index"] {
+            self.record(source_id, stage, ManifestStatus::Removed, None, None);
+        }
+        Ok(())
     }
 
     fn lookup<T: serde::de::DeserializeOwned>(&self, key: &CacheKey) -> Option<T> {
