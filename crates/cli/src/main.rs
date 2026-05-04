@@ -12,13 +12,14 @@ use adapter_extractor_pdf::PdfExtractor;
 use adapter_extractor_text::TextExtractor;
 use adapter_indexer_qdrant::QdrantIndexer;
 use adapter_manifest_sqlite::SqliteManifest;
+use adapter_snapshotter_qdrant_nas::QdrantNasSnapshotter;
 use clap::{Parser, Subcommand};
 use config::{Config, EmbedderConfig};
 use librarian_domain::{
-    ContentType, Document, Embedder, Extractor, ManifestStatus, ManifestStore, SourceHash,
-    SourceId,
+    ContentType, Document, Embedder, Extractor, ManifestStatus, ManifestStore, SnapshotId,
+    SourceHash, SourceId,
 };
-use librarian_runner::{BatchRunner, Outcome, Pipeline};
+use librarian_runner::{BatchRunner, Outcome, Pipeline, SnapshotOrchestrator};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -64,9 +65,10 @@ fn main() -> ExitCode {
         Cmd::Ingest { config, input } => cmd_ingest(&config, &input),
         Cmd::Remove { config, source_id } => cmd_remove(&config, &source_id),
         Cmd::Status { config } => cmd_status(&config),
-        Cmd::Snapshot { .. } | Cmd::Restore { .. } | Cmd::Start { .. }
-        | Cmd::Stop { .. } | Cmd::Restart { .. } => {
-            eprintln!("not yet implemented (delivered in slices 014/015)");
+        Cmd::Snapshot { config } => cmd_snapshot(&config),
+        Cmd::Restore { config, snapshot_id } => cmd_restore(&config, &snapshot_id),
+        Cmd::Start { .. } | Cmd::Stop { .. } | Cmd::Restart { .. } => {
+            eprintln!("not yet implemented (delivered in slice 015)");
             return ExitCode::from(64);
         }
     };
@@ -202,6 +204,30 @@ fn make_doc(path: &Path, ct: ContentType) -> Result<Document, String> {
         path: path.to_path_buf(),
         work_id: None,
     })
+}
+
+fn snapshot_orchestrator(cfg: &Config) -> Result<SnapshotOrchestrator<QdrantNasSnapshotter, SqliteManifest>, String> {
+    let nas = cfg.paths.snapshots.clone().ok_or_else(|| "config: paths.snapshots required for snapshot/restore".to_string())?;
+    let snapshotter = QdrantNasSnapshotter::new(&cfg.qdrant.url, &cfg.collection, nas)
+        .map_err(|e| e.to_string())?;
+    let manifest = SqliteManifest::open(&cfg.paths.manifest).map_err(|e| e.to_string())?;
+    Ok(SnapshotOrchestrator { snapshotter, manifest, retention: cfg.snapshot.retention })
+}
+
+fn cmd_snapshot(config_path: &Path) -> Result<(), String> {
+    let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
+    let orch = snapshot_orchestrator(&cfg)?;
+    let id = orch.snapshot()?;
+    println!("snapshot\tid={}", id.0);
+    Ok(())
+}
+
+fn cmd_restore(config_path: &Path, snapshot_id: &str) -> Result<(), String> {
+    let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
+    let orch = snapshot_orchestrator(&cfg)?;
+    orch.restore(&SnapshotId(snapshot_id.into()))?;
+    println!("restore\tid={snapshot_id}");
+    Ok(())
 }
 
 fn print_outcomes(outcomes: &[Outcome]) {

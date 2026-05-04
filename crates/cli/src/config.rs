@@ -11,6 +11,8 @@ pub struct Config {
     pub embedder: EmbedderConfig,
     #[serde(default)]
     pub ingest: IngestConfig,
+    #[serde(default)]
+    pub snapshot: SnapshotConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +24,17 @@ pub struct QdrantConfig {
 pub struct Paths {
     pub cache: PathBuf,
     pub manifest: PathBuf,
+    #[serde(default)]
+    pub snapshots: Option<PathBuf>,
 }
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SnapshotConfig {
+    #[serde(default = "default_retention")]
+    pub retention: usize,
+}
+
+fn default_retention() -> usize { 5 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

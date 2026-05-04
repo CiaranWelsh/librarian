@@ -21,6 +21,7 @@ adapter-chunker-blankline.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-embedder-openai.workspace = true
 adapter-embedder-fallback.workspace = true
+adapter-snapshotter-qdrant-nas.workspace = true
 clap.workspace = true
 serde.workspace = true
 toml.workspace = true

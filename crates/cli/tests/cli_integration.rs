@@ -124,7 +124,54 @@ fn unimplemented_subcommands_exit_with_distinct_code() {
     let cfg = write_config(dir.path(), &unique_collection("stub"));
 
     Command::cargo_bin("librarian").unwrap()
-        .args(["snapshot", "--config"]).arg(&cfg)
+        .args(["start", "--config"]).arg(&cfg)
         .assert()
         .code(64);
+}
+
+#[test]
+fn snapshot_invokes_orchestrator_and_prints_id() {
+    use std::process::Command as StdCmd;
+    let dir = TempDir::new().unwrap();
+    let collection = unique_collection("snap");
+    // Build a config with a `snapshots` path so the orchestrator can build.
+    let cfg_path = dir.path().join("librarian.toml");
+    let body = format!(
+        r#"collection = "{collection}"
+
+[qdrant]
+url = "{url}"
+
+[paths]
+cache = "{cache}"
+manifest = "{manifest}"
+snapshots = "{nas}"
+
+[embedder]
+kind = "stub"
+
+[ingest]
+content_type = "book"
+extractor = "text"
+"#,
+        url = qdrant_url(),
+        cache = dir.path().join("cache").display(),
+        manifest = dir.path().join("manifest.sqlite").display(),
+        nas = dir.path().join("nas").display(),
+    );
+    std::fs::write(&cfg_path, body).unwrap();
+
+    // Probe Qdrant; skip if absent.
+    let probe = Command::cargo_bin("librarian").unwrap()
+        .arg("status").arg("--config").arg(&cfg_path).assert();
+    if !probe.get_output().status.success() { eprintln!("skip: no Qdrant"); return; }
+
+    // Ingest a tiny fixture so the snapshot has content.
+    let fixture = fixture_path();
+    let _ = StdCmd::new(env!("CARGO_BIN_EXE_librarian"))
+        .args(["ingest", "--config"]).arg(&cfg_path).arg(&fixture).output();
+
+    Command::cargo_bin("librarian").unwrap()
+        .args(["snapshot", "--config"]).arg(&cfg_path)
+        .assert().success().stdout(contains("snapshot\tid="));
 }

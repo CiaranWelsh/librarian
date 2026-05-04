@@ -3,8 +3,8 @@
 
 use librarian_domain::{
     cache_key, AdapterIdentity, Cache, CacheKey, Chunk, Chunker, Document, Embedder,
-    ExtractedText, Extractor, Indexer, ManifestStatus, ManifestStore, ProvenanceLink, SourceId,
-    SourceHash, Vector,
+    ExtractedText, Extractor, Indexer, ManifestStatus, ManifestStore, ProvenanceLink, SnapshotId,
+    Snapshotter, SourceId, SourceHash, Vector,
 };
 
 pub struct Pipeline<E, Ch, Em, Ix> {
@@ -257,6 +257,45 @@ where
 
 fn key_for<A: AdapterIdentity>(source_hash: &SourceHash, adapter: &A) -> CacheKey {
     cache_key::derive(source_hash, adapter.name(), &adapter.version(), &adapter.config_hash())
+}
+
+// ─── Snapshot orchestrator (slice 014) ────────────────────────────────────────
+
+/// Wraps a `Snapshotter` with a `ManifestStore` and a retention budget.
+/// Generic over the trait — the CLI binds the concrete adapter at the
+/// composition root (hexagonal discipline per ADR-0004).
+pub struct SnapshotOrchestrator<S, M> {
+    pub snapshotter: S,
+    pub manifest: M,
+    pub retention: usize,
+}
+
+impl<S, M> SnapshotOrchestrator<S, M>
+where
+    S: Snapshotter,
+    M: ManifestStore,
+{
+    /// Take a snapshot, record it in the manifest, and prune old snapshots
+    /// down to `self.retention`.
+    pub fn snapshot(&self) -> Result<SnapshotId, String> {
+        let id = self.snapshotter.snapshot().map_err(|e| e.to_string())?;
+        let snap_source = SourceId(format!("@snapshot:{}", id.0));
+        let _ = self.manifest.record(
+            &snap_source, "snapshot", ManifestStatus::Success, 1, None, None,
+        );
+        if self.retention > 0 {
+            let _ = self.snapshotter.prune(self.retention);
+        }
+        Ok(id)
+    }
+
+    pub fn restore(&self, id: &SnapshotId) -> Result<(), String> {
+        self.snapshotter.restore(id).map_err(|e| e.to_string())
+    }
+
+    pub fn list(&self) -> Result<Vec<SnapshotId>, String> {
+        self.snapshotter.list().map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]

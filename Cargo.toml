@@ -9,6 +9,7 @@ members = [
     "crates/adapter-manifest-sqlite",
     "crates/adapter-indexer-mem",
     "crates/adapter-indexer-qdrant",
+    "crates/adapter-snapshotter-qdrant-nas",
     "crates/adapter-extractor-text",
     "crates/adapter-extractor-pdf",
     "crates/adapter-chunker-blankline",
@@ -34,6 +35,7 @@ adapter-manifest-mem = { path = "crates/adapter-manifest-mem" }
 adapter-manifest-sqlite = { path = "crates/adapter-manifest-sqlite" }
 adapter-indexer-mem = { path = "crates/adapter-indexer-mem" }
 adapter-indexer-qdrant = { path = "crates/adapter-indexer-qdrant" }
+adapter-snapshotter-qdrant-nas = { path = "crates/adapter-snapshotter-qdrant-nas" }
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
@@ -53,7 +55,7 @@ uuid = { version = "1", features = ["v5"] }
 serde_json = "1"
 lopdf = "0.34"
 printpdf = "0.7"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "multipart"] }
 mockito = "1"
 clap = { version = "4", features = ["derive"] }
 toml = "0.8"
