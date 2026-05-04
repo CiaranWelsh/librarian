@@ -42,26 +42,35 @@ pub struct QdrantIndexer {
     client: Qdrant,
     collection: String,
     dim: u64,
-    /// Optional second named vector slot ("code" / "figure" / etc.). When Some,
-    /// the slot is created at collection-init time and `upsert_named` may
-    /// populate it for any chunk.
-    extra_slot: Option<(String, u64)>,
+    /// Additional named vector slots ("code", "figure", etc.) reserved at
+    /// collection-init time. `upsert_named` may populate them per chunk.
+    extra_slots: Vec<(String, u64)>,
 }
 
 impl QdrantIndexer {
     /// Open a connection and ensure the collection exists with a `text` named
     /// vector slot of dimension `dim`. Idempotent.
     pub fn open(url: &str, collection: &str, dim: u64) -> Result<Self, QdrantError> {
-        Self::open_with_extra_slot(url, collection, dim, None)
+        Self::open_with_slots(url, collection, dim, vec![])
     }
 
-    /// Open with an optional second named-vector slot reserved at collection
-    /// creation time (slice 016: `("code", code_dim)`; slice 017: `figure`).
+    /// Open with a single extra slot — convenience for slice 016 callers.
     pub fn open_with_extra_slot(
         url: &str,
         collection: &str,
         dim: u64,
         extra_slot: Option<(String, u64)>,
+    ) -> Result<Self, QdrantError> {
+        Self::open_with_slots(url, collection, dim, extra_slot.into_iter().collect())
+    }
+
+    /// Open with multiple extra named-vector slots (e.g. `[("code", 1024), ("figure", 512)]`).
+    /// Slots are created at collection-init time; `upsert_named` populates them.
+    pub fn open_with_slots(
+        url: &str,
+        collection: &str,
+        dim: u64,
+        extra_slots: Vec<(String, u64)>,
     ) -> Result<Self, QdrantError> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -73,7 +82,7 @@ impl QdrantIndexer {
             client,
             collection: collection.to_string(),
             dim,
-            extra_slot,
+            extra_slots,
         };
         me.ensure_collection()?;
         Ok(me)
@@ -96,7 +105,7 @@ impl QdrantIndexer {
                         ..Default::default()
                     },
                 );
-                if let Some((name, dim)) = &self.extra_slot {
+                for (name, dim) in &self.extra_slots {
                     params.insert(name.clone(), VectorParams {
                         size: *dim,
                         distance: Distance::Cosine.into(),
@@ -305,6 +314,7 @@ fn build_payload(c: &Chunk) -> Payload {
         librarian_domain::ChunkPayload::Book(_) => "book",
         librarian_domain::ChunkPayload::Paper(_) => "paper",
         librarian_domain::ChunkPayload::Code(_) => "code",
+        librarian_domain::ChunkPayload::Figure(_) => "figure",
     };
     map.insert("content_type".into(), content_type.into());
     // Store the typed payload as a serialized JSON string (sufficient for v1

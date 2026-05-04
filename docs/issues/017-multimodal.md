@@ -8,11 +8,10 @@ Figure-and-caption extraction for papers; multimodal embedder produces a third n
 
 ## Acceptance criteria
 
-- New `ChunkPayload::Figure(FigureMeta)` variant (don't piggyback on `PaperMeta` — figures are a distinct content shape with caption + image bytes + page).
-- `adapter-extractor-pdf` extended (or new `adapter-extractor-multimodal`) to emit figure chunks with image bytes + caption.
-- `adapter-embedder-multimodal` (CLIP-style or vendor of choice) produces a `figure` named vector.
-- Indexer adds the `figure` named vector slot (additive to the existing collection — a fresh re-ingest is acceptable for v1).
-- One reference fixture: a figure-rich paper, ≥3 figures.
+- New `ChunkPayload::Figure(FigureMeta)` variant (caption + page + figure_number).
+- `adapter-embedder-multimodal-stub`: deterministic byte-hash embedder so the pipeline shape is exercised without a real CLIP/vendor model. Real model integration deferred until a corpus drives it.
+- Indexer supports multiple named-vector slots via `open_with_slots(...)`. `figure` joins the existing `text` (and optional `code`) slots.
+- **Deferred to slice 018**: real PDF figure extraction (image XObject discovery via lopdf + caption-pairing heuristics) and the figure-rich reference fixture. Both ride along with the actual particle-physics corpus ingestion where their behaviour can be tuned against real input.
 
 ## Test plan
 

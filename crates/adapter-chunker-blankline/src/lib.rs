@@ -3,6 +3,9 @@ use librarian_domain::{
     ContentType, Document, ExtractedText, PaperMeta, Provenance, StageVersion,
 };
 
+// Figure content_type isn't produced by the blank-line chunker — figures
+// originate from a separate multimodal extractor (slice 017).
+
 /// Splits the concatenated extracted text on blank lines.
 #[derive(Default)]
 pub struct BlankLineChunker;

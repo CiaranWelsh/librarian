@@ -103,10 +103,22 @@ pub struct CodeMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FigureMeta {
+    /// Title of the parent paper (or other carrier document).
+    pub paper_title: Option<String>,
+    /// Extracted caption text (e.g. "Figure 3: jet pT distribution"). Empty if
+    /// the extractor couldn't pair an image with caption text.
+    pub caption: String,
+    pub page: Option<u32>,
+    pub figure_number: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChunkPayload {
     Book(BookMeta),
     Paper(PaperMeta),
     Code(CodeMeta),
+    Figure(FigureMeta),
 }
 
 // ─── Provenance (F-M.6) ───────────────────────────────────────────────────────

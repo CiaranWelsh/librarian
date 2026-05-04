@@ -43,6 +43,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-embedder-multimodal-stub"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "sha2",
+]
+
+[[package]]
 name = "adapter-embedder-openai"
 version = "0.1.0"
 dependencies = [
@@ -121,6 +129,7 @@ name = "adapter-indexer-qdrant"
 version = "0.1.0"
 dependencies = [
  "adapter-chunker-code",
+ "adapter-embedder-multimodal-stub",
  "adapter-extractor-code",
  "librarian-domain",
  "qdrant-client",

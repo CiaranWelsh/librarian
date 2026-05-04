@@ -15,6 +15,7 @@ members = [
     "crates/adapter-extractor-code",
     "crates/adapter-chunker-code",
     "crates/adapter-embedder-voyage",
+    "crates/adapter-embedder-multimodal-stub",
     "crates/adapter-chunker-blankline",
     "crates/adapter-embedder-stub",
     "crates/adapter-embedder-openai",
@@ -44,6 +45,7 @@ adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
 adapter-extractor-code = { path = "crates/adapter-extractor-code" }
 adapter-chunker-code = { path = "crates/adapter-chunker-code" }
 adapter-embedder-voyage = { path = "crates/adapter-embedder-voyage" }
+adapter-embedder-multimodal-stub = { path = "crates/adapter-embedder-multimodal-stub" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
 adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
 adapter-embedder-openai = { path = "crates/adapter-embedder-openai" }
