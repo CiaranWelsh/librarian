@@ -1099,6 +1099,7 @@ dependencies = [
 name = "librarian-runner"
 version = "0.1.0"
 dependencies = [
+ "adapter-cache-fs",
  "adapter-cache-mem",
  "adapter-chunker-blankline",
  "adapter-embedder-stub",
@@ -1107,6 +1108,9 @@ dependencies = [
  "adapter-indexer-qdrant",
  "adapter-manifest-mem",
  "librarian-domain",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
 ]
 

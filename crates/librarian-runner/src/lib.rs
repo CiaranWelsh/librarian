@@ -2,8 +2,9 @@
 //! Slice 002: serial, no fault catching, no cache lookup.
 
 use librarian_domain::{
-    cache_key, AdapterIdentity, Chunker, Document, Embedder, Extractor, Indexer,
-    ManifestStatus, ManifestStore, ProvenanceLink, SourceId, Vector,
+    cache_key, AdapterIdentity, Cache, CacheKey, Chunk, Chunker, Document, Embedder,
+    ExtractedText, Extractor, Indexer, ManifestStatus, ManifestStore, ProvenanceLink, SourceId,
+    SourceHash, Vector,
 };
 
 pub struct Pipeline<E, Ch, Em, Ix> {
@@ -101,53 +102,123 @@ impl Outcome {
     pub fn is_success(&self) -> bool { matches!(self, Outcome::Success { .. }) }
 }
 
-/// Wraps a `Pipeline` with a `ManifestStore`. `ingest_batch` catches errors at
-/// the per-Document boundary, records the outcome to the manifest, and moves on.
-pub struct BatchRunner<E, Ch, Em, Ix, M> {
+/// Wraps a `Pipeline` with a `ManifestStore` and a `Cache`. `ingest_batch`
+/// catches errors at the per-Document boundary (slice 006) and consults the
+/// cache before each stage to skip work on idempotent re-ingest (slice 007).
+pub struct BatchRunner<E, Ch, Em, Ix, M, C> {
     pub pipeline: Pipeline<E, Ch, Em, Ix>,
     pub manifest: M,
+    pub cache: C,
 }
 
-impl<E, Ch, Em, Ix, M> BatchRunner<E, Ch, Em, Ix, M>
+impl<E, Ch, Em, Ix, M, C> BatchRunner<E, Ch, Em, Ix, M, C>
 where
     E: Extractor,
     Ch: Chunker,
     Em: Embedder,
     Ix: Indexer,
     M: ManifestStore,
+    C: Cache,
 {
-    /// Run each Document in turn. A failure on one Document does not halt the
-    /// batch — the failure is recorded in the manifest and the next Document
-    /// proceeds (F-1.3, QA-F1).
     pub fn ingest_batch(&self, docs: &[Document]) -> Vec<Outcome> {
         docs.iter().map(|d| self.ingest_one(d)).collect()
     }
 
     fn ingest_one(&self, doc: &Document) -> Outcome {
-        match self.pipeline.run(doc) {
-            Ok(s) => {
-                for stage in ["extract", "chunk", "embed", "index"] {
-                    let _ = self.manifest.record(
-                        &doc.source_id, stage, ManifestStatus::Success, 1, None, None,
-                    );
+        let sid = &doc.source_id;
+        let sh = &doc.source_hash;
+
+        // ── extract ──
+        let ext_key = key_for(sh, &self.pipeline.extractor);
+        let extracted: ExtractedText = match self.lookup(&ext_key) {
+            Some(t) => { self.record(sid, "extract", ManifestStatus::Cached, None, Some(&ext_key)); t }
+            None => match self.pipeline.extractor.extract(doc) {
+                Ok(t) => {
+                    self.store(&ext_key, &t);
+                    self.record(sid, "extract", ManifestStatus::Success, None, Some(&ext_key));
+                    t
                 }
-                Outcome::Success { source_id: doc.source_id.clone(), chunks_indexed: s.chunks_indexed }
+                Err(e) => return self.fail(sid, "extract", e.to_string()),
+            },
+        };
+
+        // ── chunk ──
+        let chunk_key = key_for(sh, &self.pipeline.chunker);
+        let mut chunks: Vec<Chunk> = match self.lookup(&chunk_key) {
+            Some(c) => { self.record(sid, "chunk", ManifestStatus::Cached, None, Some(&chunk_key)); c }
+            None => match self.pipeline.chunker.chunk(doc, extracted) {
+                Ok(c) => {
+                    self.store(&chunk_key, &c);
+                    self.record(sid, "chunk", ManifestStatus::Success, None, Some(&chunk_key));
+                    c
+                }
+                Err(e) => return self.fail(sid, "chunk", e.to_string()),
+            },
+        };
+
+        // Provenance — appended in fixed order regardless of cache hits, since
+        // the *content* of a chunk doesn't change when its inputs are cached.
+        let p_ext = link(&self.pipeline.extractor, sh);
+        let p_chunk = link(&self.pipeline.chunker, sh);
+        let p_embed = link(&self.pipeline.embedder, sh);
+        for c in &mut chunks {
+            c.provenance.0.push(p_ext.clone());
+            c.provenance.0.push(p_chunk.clone());
+            c.provenance.0.push(p_embed.clone());
+        }
+
+        // ── embed ──
+        let embed_key = key_for(sh, &self.pipeline.embedder);
+        let vectors: Vec<Vector> = match self.lookup(&embed_key) {
+            Some(v) => { self.record(sid, "embed", ManifestStatus::Cached, None, Some(&embed_key)); v }
+            None => {
+                let texts: Vec<&str> = chunks.iter().map(|c| c.text.as_str()).collect();
+                match self.pipeline.embedder.embed(&texts) {
+                    Ok(v) => {
+                        self.store(&embed_key, &v);
+                        self.record(sid, "embed", ManifestStatus::Success, None, Some(&embed_key));
+                        v
+                    }
+                    Err(e) => return self.fail(sid, "embed", e.to_string()),
+                }
             }
-            Err(e) => {
-                let stage: &'static str = match &e {
-                    RunError::Extract(_) => "extract",
-                    RunError::Chunk(_) => "chunk",
-                    RunError::Embed(_) => "embed",
-                    RunError::Index(_) => "index",
-                };
-                let msg = e.to_string();
-                let _ = self.manifest.record(
-                    &doc.source_id, stage, ManifestStatus::Failed, 1, Some(&msg), None,
-                );
-                Outcome::Failed { source_id: doc.source_id.clone(), stage, error: msg }
-            }
+        };
+
+        // ── index ── (always called; deterministic IDs make it idempotent)
+        match self.pipeline.indexer.upsert(&chunks, &vectors) {
+            Ok(()) => self.record(sid, "index", ManifestStatus::Success, None, None),
+            Err(e) => return self.fail(sid, "index", e.to_string()),
+        }
+
+        Outcome::Success { source_id: sid.clone(), chunks_indexed: chunks.len() }
+    }
+
+    fn lookup<T: serde::de::DeserializeOwned>(&self, key: &CacheKey) -> Option<T> {
+        match self.cache.get(key) {
+            Ok(Some(bytes)) => serde_json::from_slice(&bytes).ok(),
+            _ => None,
         }
     }
+
+    fn store<T: serde::Serialize>(&self, key: &CacheKey, value: &T) {
+        if let Ok(bytes) = serde_json::to_vec(value) {
+            let _ = self.cache.put(key, &bytes);
+        }
+    }
+
+    fn record(&self, sid: &SourceId, stage: &'static str, status: ManifestStatus,
+              error: Option<&str>, output_ref: Option<&CacheKey>) {
+        let _ = self.manifest.record(sid, stage, status, 1, error, output_ref);
+    }
+
+    fn fail(&self, sid: &SourceId, stage: &'static str, msg: String) -> Outcome {
+        self.record(sid, stage, ManifestStatus::Failed, Some(&msg), None);
+        Outcome::Failed { source_id: sid.clone(), stage, error: msg }
+    }
+}
+
+fn key_for<A: AdapterIdentity>(source_hash: &SourceHash, adapter: &A) -> CacheKey {
+    cache_key::derive(source_hash, adapter.name(), &adapter.version(), &adapter.config_hash())
 }
 
 #[cfg(test)]

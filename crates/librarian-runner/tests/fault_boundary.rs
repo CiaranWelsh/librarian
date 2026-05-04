@@ -76,6 +76,7 @@ fn extractor_failure_on_one_doc_does_not_halt_batch() {
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
+        cache: adapter_cache_mem::MemCache::new(),
     };
 
     let outcomes = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3"), doc("d4")]);
@@ -109,6 +110,7 @@ fn embedder_failure_does_not_write_to_indexer_for_failed_doc() {
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
+        cache: adapter_cache_mem::MemCache::new(),
     };
 
     let _ = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3")]);
@@ -132,6 +134,7 @@ fn empty_batch_is_a_noop_with_no_outcomes() {
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
+        cache: adapter_cache_mem::MemCache::new(),
     };
     assert!(runner.ingest_batch(&[]).is_empty());
     assert_eq!(runner.pipeline.indexer.count(), 0);
@@ -147,6 +150,7 @@ fn outcomes_preserve_input_order() {
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
+        cache: adapter_cache_mem::MemCache::new(),
     };
     let outcomes = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3")]);
     let ids: Vec<_> = outcomes.iter().map(|o| o.source_id().0.clone()).collect();

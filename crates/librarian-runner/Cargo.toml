@@ -8,6 +8,8 @@ rust-version.workspace = true
 [dependencies]
 librarian-domain.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 adapter-cache-mem.workspace = true
@@ -17,3 +19,5 @@ adapter-extractor-text.workspace = true
 adapter-chunker-blankline.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-indexer-qdrant.workspace = true
+adapter-cache-fs.workspace = true
+tempfile.workspace = true

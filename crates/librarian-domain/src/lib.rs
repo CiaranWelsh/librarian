@@ -241,6 +241,12 @@ pub trait Cache {
     fn put(&self, key: &CacheKey, value: &[u8]) -> Result<(), Self::Error>;
 }
 
+impl<T: Cache + ?Sized> Cache for &T {
+    type Error = T::Error;
+    fn get(&self, key: &CacheKey) -> Result<Option<Vec<u8>>, Self::Error> { (**self).get(key) }
+    fn put(&self, key: &CacheKey, value: &[u8]) -> Result<(), Self::Error> { (**self).put(key, value) }
+}
+
 pub trait ManifestStore {
     type Error: std::error::Error + Send + Sync + 'static;
     fn record(
@@ -256,6 +262,19 @@ pub trait ManifestStore {
         &self,
         status: ManifestStatus,
     ) -> Result<Vec<(SourceId, String)>, Self::Error>;
+}
+
+impl<T: ManifestStore + ?Sized> ManifestStore for &T {
+    type Error = T::Error;
+    fn record(
+        &self, source_id: &SourceId, stage: &str, status: ManifestStatus,
+        attempts: u32, error: Option<&str>, output_ref: Option<&CacheKey>,
+    ) -> Result<(), Self::Error> {
+        (**self).record(source_id, stage, status, attempts, error, output_ref)
+    }
+    fn list_by_status(&self, status: ManifestStatus) -> Result<Vec<(SourceId, String)>, Self::Error> {
+        (**self).list_by_status(status)
+    }
 }
 
 pub trait Snapshotter: AdapterIdentity {

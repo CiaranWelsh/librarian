@@ -77,6 +77,7 @@ fn embedder_failure_writes_no_chunks_for_failed_doc_in_qdrant() {
             indexer: ix,
         },
         manifest: MemManifest::new(),
+        cache: adapter_cache_mem::MemCache::new(),
     };
 
     let _ = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3")]);
