@@ -6,6 +6,7 @@ members = [
     "crates/adapter-cache-mem",
     "crates/adapter-cache-fs",
     "crates/adapter-manifest-mem",
+    "crates/adapter-manifest-sqlite",
     "crates/adapter-indexer-mem",
     "crates/adapter-extractor-text",
     "crates/adapter-chunker-blankline",
@@ -24,6 +25,7 @@ librarian-runner = { path = "crates/librarian-runner" }
 adapter-cache-mem = { path = "crates/adapter-cache-mem" }
 adapter-cache-fs = { path = "crates/adapter-cache-fs" }
 adapter-manifest-mem = { path = "crates/adapter-manifest-mem" }
+adapter-manifest-sqlite = { path = "crates/adapter-manifest-sqlite" }
 adapter-indexer-mem = { path = "crates/adapter-indexer-mem" }
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
@@ -34,3 +36,4 @@ sha2 = "0.10"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
+rusqlite = { version = "0.31", features = ["bundled"] }
