@@ -2299,18 +2299,22 @@ dependencies = [
 name = "walking-skeleton"
 version = "0.1.0"
 dependencies = [
+ "adapter-cache-fs",
  "adapter-cache-mem",
  "adapter-chunker-blankline",
  "adapter-embedder-stub",
  "adapter-extractor-text",
  "adapter-indexer-mem",
+ "adapter-indexer-qdrant",
  "adapter-manifest-mem",
+ "adapter-manifest-sqlite",
  "assert_cmd",
  "hex",
  "librarian-domain",
  "librarian-runner",
  "predicates",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]
