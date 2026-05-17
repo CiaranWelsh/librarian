@@ -1,104 +1,18 @@
-use librarian_domain::{
-    AdapterIdentity, Chunk, ConfigHash, Indexer, SourceId, StageVersion, Vector,
-};
-use std::collections::HashMap;
-use std::sync::Mutex;
+//! In-memory `Indexer` — used by tests and the walking skeleton.
 
-#[derive(Debug, Clone)]
-pub struct Point {
-    pub chunk: Chunk,
-    pub vector: Vector,
-}
+mod error;
+mod indexer;
+mod point;
 
-#[derive(Default)]
-pub struct MemIndexer {
-    points: Mutex<HashMap<String, Point>>, // chunk_id -> point
-}
-
-impl MemIndexer {
-    pub fn new() -> Self { Self::default() }
-    pub fn points(&self) -> Vec<Point> { self.points.lock().unwrap().values().cloned().collect() }
-    pub fn count(&self) -> usize { self.points.lock().unwrap().len() }
-    pub fn by_source(&self, source_id: &SourceId) -> Vec<Point> {
-        self.points
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|p| p.chunk.source_id == *source_id)
-            .cloned()
-            .collect()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum MemIndexerError {
-    #[error("length mismatch: {chunks} chunks vs {vectors} vectors")]
-    LengthMismatch { chunks: usize, vectors: usize },
-    #[error("poisoned")]
-    Poisoned,
-}
-
-impl AdapterIdentity for MemIndexer {
-    fn name(&self) -> &str { "mem-indexer" }
-    fn version(&self) -> StageVersion { StageVersion("0.1.0".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("default".into()) }
-}
-
-impl Indexer for MemIndexer {
-    type Error = MemIndexerError;
-
-    fn upsert(&self, chunks: &[Chunk], vectors: &[Vector]) -> Result<(), Self::Error> {
-        if chunks.len() != vectors.len() {
-            return Err(MemIndexerError::LengthMismatch {
-                chunks: chunks.len(),
-                vectors: vectors.len(),
-            });
-        }
-        let mut g = self.points.lock().map_err(|_| MemIndexerError::Poisoned)?;
-        for (c, v) in chunks.iter().zip(vectors.iter()) {
-            g.insert(
-                c.chunk_id.0.clone(),
-                Point { chunk: c.clone(), vector: v.clone() },
-            );
-        }
-        Ok(())
-    }
-
-    fn replace(
-        &self,
-        source_id: &SourceId,
-        chunks: &[Chunk],
-        vectors: &[Vector],
-    ) -> Result<(), Self::Error> {
-        if chunks.len() != vectors.len() {
-            return Err(MemIndexerError::LengthMismatch {
-                chunks: chunks.len(),
-                vectors: vectors.len(),
-            });
-        }
-        let mut g = self.points.lock().map_err(|_| MemIndexerError::Poisoned)?;
-        g.retain(|_, p| p.chunk.source_id != *source_id);
-        for (c, v) in chunks.iter().zip(vectors.iter()) {
-            g.insert(
-                c.chunk_id.0.clone(),
-                Point { chunk: c.clone(), vector: v.clone() },
-            );
-        }
-        Ok(())
-    }
-
-    fn delete_by_source_id(&self, source_id: &SourceId) -> Result<(), Self::Error> {
-        let mut g = self.points.lock().map_err(|_| MemIndexerError::Poisoned)?;
-        g.retain(|_, p| p.chunk.source_id != *source_id);
-        Ok(())
-    }
-}
+pub use error::MemIndexerError;
+pub use indexer::MemIndexer;
+pub use point::Point;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use librarian_domain::{
-        BookMeta, ChunkId, ChunkPayload, Provenance,
+        BookMeta, Chunk, ChunkId, ChunkPayload, Indexer, Provenance, SourceId,
     };
 
     fn chunk(sid: &str, idx: u32) -> Chunk {
@@ -155,4 +69,3 @@ mod tests {
         assert_eq!(ix.by_source(&SourceId("a".into())).len(), 1);
     }
 }
-

@@ -1,215 +1,18 @@
-//! SQLite-backed `ManifestStore`. One file per collection. One row per
-//! `(source_id, stage)` — `record` upserts.
+//! SQLite-backed `ManifestStore` adapter.
 
-use librarian_domain::{CacheKey, ManifestStatus, ManifestStore, SourceId};
-use rusqlite::{params, Connection, OptionalExtension};
-use std::path::PathBuf;
-use std::sync::Mutex;
+mod error;
+mod manifest;
+mod queries;
+mod status;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS manifest (
-    source_id   TEXT NOT NULL,
-    stage       TEXT NOT NULL,
-    status      TEXT NOT NULL,
-    attempts    INTEGER NOT NULL DEFAULT 0,
-    error       TEXT,
-    output_ref  TEXT,
-    updated_at  INTEGER NOT NULL,
-    PRIMARY KEY (source_id, stage)
-);
-CREATE INDEX IF NOT EXISTS idx_manifest_status ON manifest(status);
-CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);
-INSERT OR IGNORE INTO schema_version(version) VALUES (1);
-"#;
-
-pub struct SqliteManifest {
-    conn: Mutex<Connection>,
-    #[allow(dead_code)]
-    path: PathBuf,
-}
-
-impl SqliteManifest {
-    pub fn open(path: impl Into<PathBuf>) -> Result<Self, SqliteManifestError> {
-        let path = path.into();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(SqliteManifestError::Io)?;
-        }
-        let conn = Connection::open(&path).map_err(SqliteManifestError::Db)?;
-        conn.execute_batch(SCHEMA).map_err(SqliteManifestError::Db)?;
-        Ok(Self { conn: Mutex::new(conn), path })
-    }
-
-    pub fn schema_version(&self) -> Result<i64, SqliteManifestError> {
-        let g = self.conn.lock().expect("poisoned");
-        let v: i64 = g
-            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
-            .map_err(SqliteManifestError::Db)?;
-        Ok(v)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SqliteManifestError {
-    #[error("io: {0}")]
-    Io(#[source] std::io::Error),
-    #[error("db: {0}")]
-    Db(#[source] rusqlite::Error),
-}
-
-fn status_str(s: ManifestStatus) -> &'static str {
-    match s {
-        ManifestStatus::Pending => "Pending",
-        ManifestStatus::Success => "Success",
-        ManifestStatus::Cached => "Cached",
-        ManifestStatus::Failed => "Failed",
-        ManifestStatus::RecoveredViaFallback => "RecoveredViaFallback",
-        ManifestStatus::Skipped => "Skipped",
-        ManifestStatus::Removed => "Removed",
-    }
-}
-
-fn parse_status(s: &str) -> Option<ManifestStatus> {
-    Some(match s {
-        "Pending" => ManifestStatus::Pending,
-        "Success" => ManifestStatus::Success,
-        "Cached" => ManifestStatus::Cached,
-        "Failed" => ManifestStatus::Failed,
-        "RecoveredViaFallback" => ManifestStatus::RecoveredViaFallback,
-        "Skipped" => ManifestStatus::Skipped,
-        "Removed" => ManifestStatus::Removed,
-        _ => return None,
-    })
-}
-
-impl ManifestStore for SqliteManifest {
-    type Error = SqliteManifestError;
-
-    fn record(
-        &self,
-        source_id: &SourceId,
-        stage: &str,
-        status: ManifestStatus,
-        attempts: u32,
-        error: Option<&str>,
-        output_ref: Option<&CacheKey>,
-    ) -> Result<(), Self::Error> {
-        let g = self.conn.lock().expect("poisoned");
-        let now = chrono_now();
-        g.execute(
-            "INSERT INTO manifest(source_id, stage, status, attempts, error, output_ref, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(source_id, stage) DO UPDATE SET
-               status     = excluded.status,
-               attempts   = excluded.attempts,
-               error      = excluded.error,
-               output_ref = excluded.output_ref,
-               updated_at = excluded.updated_at",
-            params![
-                source_id.0,
-                stage,
-                status_str(status),
-                attempts as i64,
-                error,
-                output_ref.map(|k| k.0.as_str()),
-                now,
-            ],
-        )
-        .map_err(SqliteManifestError::Db)?;
-        Ok(())
-    }
-
-    fn list_by_status(
-        &self,
-        status: ManifestStatus,
-    ) -> Result<Vec<(SourceId, String)>, Self::Error> {
-        let g = self.conn.lock().expect("poisoned");
-        let mut stmt = g
-            .prepare("SELECT source_id, stage FROM manifest WHERE status = ?1")
-            .map_err(SqliteManifestError::Db)?;
-        let rows = stmt
-            .query_map([status_str(status)], |r| {
-                Ok((SourceId(r.get::<_, String>(0)?), r.get::<_, String>(1)?))
-            })
-            .map_err(SqliteManifestError::Db)?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r.map_err(SqliteManifestError::Db)?);
-        }
-        Ok(out)
-    }
-}
-
-/// Minimal "now" for `updated_at` — seconds since epoch. Avoids pulling chrono
-/// here; manifest doesn't expose timestamps externally yet.
-fn chrono_now() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// Distinct source_ids that have at least one Success or Cached row.
-/// Used by the MCP server's `list_documents` (slice 013).
-pub fn distinct_ingested_sources(
-    store: &SqliteManifest,
-) -> Result<Vec<SourceId>, SqliteManifestError> {
-    let g = store.conn.lock().expect("poisoned");
-    let mut stmt = g
-        .prepare(
-            "SELECT DISTINCT source_id FROM manifest \
-             WHERE status IN ('Success', 'Cached', 'RecoveredViaFallback')",
-        )
-        .map_err(SqliteManifestError::Db)?;
-    let rows = stmt
-        .query_map([], |r| Ok(SourceId(r.get::<_, String>(0)?)))
-        .map_err(SqliteManifestError::Db)?;
-    let mut out = Vec::new();
-    for r in rows { out.push(r.map_err(SqliteManifestError::Db)?); }
-    Ok(out)
-}
-
-/// Look up a single row by primary key — used by tests and downstream queries.
-pub fn get_row(
-    store: &SqliteManifest,
-    source_id: &SourceId,
-    stage: &str,
-) -> Result<Option<Row>, SqliteManifestError> {
-    let g = store.conn.lock().expect("poisoned");
-    let row = g
-        .query_row(
-            "SELECT source_id, stage, status, attempts, error, output_ref
-             FROM manifest WHERE source_id = ?1 AND stage = ?2",
-            params![source_id.0, stage],
-            |r| {
-                Ok(Row {
-                    source_id: SourceId(r.get(0)?),
-                    stage: r.get(1)?,
-                    status: parse_status(&r.get::<_, String>(2)?).unwrap_or(ManifestStatus::Pending),
-                    attempts: r.get::<_, i64>(3)? as u32,
-                    error: r.get(4)?,
-                    output_ref: r.get::<_, Option<String>>(5)?.map(CacheKey),
-                })
-            },
-        )
-        .optional()
-        .map_err(SqliteManifestError::Db)?;
-    Ok(row)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row {
-    pub source_id: SourceId,
-    pub stage: String,
-    pub status: ManifestStatus,
-    pub attempts: u32,
-    pub error: Option<String>,
-    pub output_ref: Option<CacheKey>,
-}
+pub use error::SqliteManifestError;
+pub use manifest::SqliteManifest;
+pub use queries::{distinct_ingested_sources, get_row, Row};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use librarian_domain::{CacheKey, ManifestStatus, ManifestStore, SourceId};
     use tempfile::tempdir;
 
     fn fresh() -> (tempfile::TempDir, SqliteManifest) {
@@ -231,7 +34,6 @@ mod tests {
         let (_d, m) = fresh();
         m.record(&sid("a"), "extract", ManifestStatus::Pending, 0, None, None).unwrap();
         m.record(&sid("a"), "extract", ManifestStatus::Success, 1, None, None).unwrap();
-        // exactly one row, with the latest values
         let row = get_row(&m, &sid("a"), "extract").unwrap().unwrap();
         assert_eq!(row.status, ManifestStatus::Success);
         assert_eq!(row.attempts, 1);
