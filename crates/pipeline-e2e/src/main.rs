@@ -1,4 +1,8 @@
-//! Walking skeleton — runs one fixture through the in-memory pipeline end-to-end.
+//! `pipeline-e2e` — end-to-end test binary. Runs one fixture through the
+//! in-memory pipeline so we can prove the wiring composes without any
+//! external service. Not a product surface; the real composition roots are
+//! the `cli` and `server` crates. Lives in the workspace because the
+//! companion tests in `tests/` exercise this binary directly.
 
 use adapter_chunker_blankline::BlankLineChunker;
 use adapter_embedder_stub::StubEmbedder;
@@ -12,7 +16,7 @@ use std::path::PathBuf;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path: PathBuf = std::env::args()
         .nth(1)
-        .ok_or("usage: walking-skeleton <fixture-path>")?
+        .ok_or("usage: pipeline-e2e <fixture-path>")?
         .into();
 
     let bytes = std::fs::read(&path)?;

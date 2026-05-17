@@ -1715,6 +1715,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
+name = "pipeline-e2e"
+version = "0.1.0"
+dependencies = [
+ "adapter-cache-fs",
+ "adapter-cache-mem",
+ "adapter-chunker-blankline",
+ "adapter-embedder-stub",
+ "adapter-extractor-text",
+ "adapter-indexer-mem",
+ "adapter-indexer-qdrant",
+ "adapter-manifest-mem",
+ "adapter-manifest-sqlite",
+ "assert_cmd",
+ "hex",
+ "librarian-domain",
+ "librarian-runner",
+ "predicates",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2913,28 +2935,6 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
-]
-
-[[package]]
-name = "walking-skeleton"
-version = "0.1.0"
-dependencies = [
- "adapter-cache-fs",
- "adapter-cache-mem",
- "adapter-chunker-blankline",
- "adapter-embedder-stub",
- "adapter-extractor-text",
- "adapter-indexer-mem",
- "adapter-indexer-qdrant",
- "adapter-manifest-mem",
- "adapter-manifest-sqlite",
- "assert_cmd",
- "hex",
- "librarian-domain",
- "librarian-runner",
- "predicates",
- "sha2",
- "tempfile",
 ]
 
 [[package]]

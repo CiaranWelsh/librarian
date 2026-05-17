@@ -13,7 +13,7 @@ fn fixture_path() -> std::path::PathBuf {
 
 #[test]
 fn ingests_three_paragraph_fixture() {
-    Command::cargo_bin("walking-skeleton")
+    Command::cargo_bin("pipeline-e2e")
         .unwrap()
         .arg(fixture_path())
         .assert()
@@ -23,7 +23,7 @@ fn ingests_three_paragraph_fixture() {
 
 #[test]
 fn missing_argument_fails() {
-    Command::cargo_bin("walking-skeleton")
+    Command::cargo_bin("pipeline-e2e")
         .unwrap()
         .assert()
         .failure();

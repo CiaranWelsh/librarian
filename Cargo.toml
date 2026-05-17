@@ -20,7 +20,7 @@ members = [
     "crates/adapter-embedder-stub",
     "crates/adapter-embedder-openai",
     "crates/adapter-embedder-fallback",
-    "crates/walking-skeleton",
+    "crates/pipeline-e2e",
     "crates/cli",
     "crates/server",
 ]
