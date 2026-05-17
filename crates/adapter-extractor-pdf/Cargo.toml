@@ -8,14 +8,4 @@ rust-version.workspace = true
 [dependencies]
 librarian-domain.workspace = true
 thiserror.workspace = true
-lopdf.workspace = true
-
-[dev-dependencies]
-printpdf.workspace = true
 tempfile.workspace = true
-adapter-chunker-blankline.workspace = true
-adapter-embedder-stub.workspace = true
-adapter-indexer-mem.workspace = true
-adapter-manifest-mem.workspace = true
-adapter-cache-mem.workspace = true
-librarian-runner.workspace = true
