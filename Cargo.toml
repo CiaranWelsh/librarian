@@ -12,6 +12,7 @@ members = [
     "crates/adapter-snapshotter-qdrant-nas",
     "crates/adapter-extractor-text",
     "crates/adapter-extractor-pdf",
+    "crates/adapter-extractor-ebook",
     "crates/adapter-extractor-code",
     "crates/adapter-chunker-code",
     "crates/adapter-embedder-voyage",
@@ -42,6 +43,7 @@ adapter-indexer-qdrant = { path = "crates/adapter-indexer-qdrant" }
 adapter-snapshotter-qdrant-nas = { path = "crates/adapter-snapshotter-qdrant-nas" }
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
+adapter-extractor-ebook = { path = "crates/adapter-extractor-ebook" }
 adapter-extractor-code = { path = "crates/adapter-extractor-code" }
 adapter-chunker-code = { path = "crates/adapter-chunker-code" }
 adapter-embedder-voyage = { path = "crates/adapter-embedder-voyage" }
@@ -67,3 +69,5 @@ clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 walkdir = "2"
 libc = "0.2"
+regex = "1"
+once_cell = "1"

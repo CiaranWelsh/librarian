@@ -92,6 +92,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-extractor-ebook"
+version = "0.1.0"
+dependencies = [
+ "librarian-domain",
+ "once_cell",
+ "regex",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "adapter-extractor-pdf"
 version = "0.1.0"
 dependencies = [
@@ -1292,6 +1303,7 @@ dependencies = [
  "adapter-embedder-stub",
  "adapter-embedder-voyage",
  "adapter-extractor-code",
+ "adapter-extractor-ebook",
  "adapter-extractor-pdf",
  "adapter-extractor-text",
  "adapter-indexer-qdrant",

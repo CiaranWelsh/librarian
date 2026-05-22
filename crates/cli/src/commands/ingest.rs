@@ -9,6 +9,7 @@ use adapter_embedder_openai::{OpenAiConfig, OpenAiEmbedder};
 use adapter_embedder_stub::StubEmbedder;
 use adapter_embedder_voyage::{VoyageConfig, VoyageEmbedder};
 use adapter_extractor_code::CodeExtractor;
+use adapter_extractor_ebook::EbookExtractor;
 use adapter_extractor_pdf::PdfExtractor;
 use adapter_extractor_text::TextExtractor;
 use adapter_indexer_qdrant::QdrantIndexer;
@@ -29,9 +30,10 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
     }
 
     let outcomes = match (cfg.ingest.extractor.as_str(), &cfg.embedder) {
-        ("text", EmbedderConfig::Stub) => run_ingest(&cfg, TextExtractor::new(), BlankLineChunker::new(), StubEmbedder::new(), &docs)?,
-        ("pdf",  EmbedderConfig::Stub) => run_ingest(&cfg, PdfExtractor::new(),  BlankLineChunker::new(), StubEmbedder::new(), &docs)?,
-        ("code", EmbedderConfig::Stub) => run_ingest(&cfg, CodeExtractor::new(), CodeChunker::new(), StubEmbedder::new(), &docs)?,
+        ("text",  EmbedderConfig::Stub) => run_ingest(&cfg, TextExtractor::new(),  BlankLineChunker::new(), StubEmbedder::new(), &docs)?,
+        ("pdf",   EmbedderConfig::Stub) => run_ingest(&cfg, PdfExtractor::new(),   BlankLineChunker::new(), StubEmbedder::new(), &docs)?,
+        ("ebook", EmbedderConfig::Stub) => run_ingest(&cfg, EbookExtractor::new(), BlankLineChunker::new(), StubEmbedder::new(), &docs)?,
+        ("code",  EmbedderConfig::Stub) => run_ingest(&cfg, CodeExtractor::new(),  CodeChunker::new(),      StubEmbedder::new(), &docs)?,
 
         ("text", EmbedderConfig::Openai { model, dimensions, batch_size }) => {
             let emb = openai(model, *dimensions, *batch_size)?;
@@ -45,6 +47,10 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             let emb = openai(model, *dimensions, *batch_size)?;
             run_ingest(&cfg, CodeExtractor::new(), CodeChunker::new(), emb, &docs)?
         }
+        ("ebook", EmbedderConfig::Openai { model, dimensions, batch_size }) => {
+            let emb = openai(model, *dimensions, *batch_size)?;
+            run_ingest(&cfg, EbookExtractor::new(), BlankLineChunker::new(), emb, &docs)?
+        }
 
         ("text", EmbedderConfig::Voyage { model, dimensions, batch_size }) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
@@ -57,6 +63,10 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
         ("code", EmbedderConfig::Voyage { model, dimensions, batch_size }) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
             run_ingest(&cfg, CodeExtractor::new(), CodeChunker::new(), emb, &docs)?
+        }
+        ("ebook", EmbedderConfig::Voyage { model, dimensions, batch_size }) => {
+            let emb = voyage(model, *dimensions, *batch_size)?;
+            run_ingest(&cfg, EbookExtractor::new(), BlankLineChunker::new(), emb, &docs)?
         }
 
         (kind, _) => return Err(format!("unsupported extractor: {kind}")),

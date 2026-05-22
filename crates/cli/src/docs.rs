@@ -14,6 +14,7 @@ pub fn collect_docs(input: &Path, content_type: &str, extractor: &str) -> Result
         other => return Err(format!("unknown content_type: {other}")),
     };
     let code_mode = extractor == "code";
+    let ebook_mode = extractor == "ebook";
     let mut docs = Vec::new();
     if input.is_file() {
         docs.push(make_doc(input, ct)?);
@@ -24,10 +25,20 @@ pub fn collect_docs(input: &Path, content_type: &str, extractor: &str) -> Result
             if code_mode && !should_include(path, DEFAULT_SKIP_DIRS, DEFAULT_INCLUDE_EXTS) {
                 continue;
             }
+            if ebook_mode && !has_ebook_ext(path) {
+                continue;
+            }
             docs.push(make_doc(path, ct)?);
         }
     }
     Ok(docs)
+}
+
+fn has_ebook_ext(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        Some("epub" | "mobi" | "azw3" | "azw")
+    )
 }
 
 fn make_doc(path: &Path, ct: ContentType) -> Result<Document, String> {

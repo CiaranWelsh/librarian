@@ -17,6 +17,7 @@ adapter-manifest-sqlite.workspace = true
 adapter-indexer-qdrant.workspace = true
 adapter-extractor-text.workspace = true
 adapter-extractor-pdf.workspace = true
+adapter-extractor-ebook.workspace = true
 adapter-chunker-blankline.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-embedder-openai.workspace = true
