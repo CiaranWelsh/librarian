@@ -4,7 +4,7 @@ How to operate librarian against the real corpora (slice 018).
 
 ## Pre-flight
 
-- Qdrant container running on Turbo: `docker run -d -p 6333:6333 -v /var/lib/qdrant:/qdrant/storage qdrant/qdrant:latest`.
+- Qdrant container running on Turbo: `docker run -d -p 6333:6333 -p 6334:6334 -v /var/lib/qdrant:/qdrant/storage qdrant/qdrant:latest` (the Rust client uses gRPC on 6334; 6333 is REST/UI).
 - NAS reachable from Turbo (HTTPS or SCP target). Path mounted at `/mnt/nas/librarian/`.
 - `librarian` and `librarian-collection` binaries on PATH (`cargo install --path crates/cli && cargo install --path crates/server`).
 - API keys exported: `OPENAI_API_KEY` for the text embedder; `VOYAGE_API_KEY` if using the code embedder family.
@@ -17,7 +17,7 @@ Each collection has its own `~/.librarian/<name>.toml`.
 collection = "software"
 
 [qdrant]
-url = "http://localhost:6333"
+url = "http://localhost:6334"
 
 [paths]
 cache = "/var/lib/librarian/software/cache"

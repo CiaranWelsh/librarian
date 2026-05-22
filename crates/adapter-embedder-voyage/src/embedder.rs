@@ -46,8 +46,20 @@ impl VoyageEmbedder {
         Self::new(key, cfg)
     }
 
+    /// Embed a single query string with `input_type=query` (Voyage's
+    /// recommendation: documents and queries get distinct prompts so
+    /// asymmetric retrieval works as designed).
+    pub fn embed_query(&self, q: &str) -> Result<Vector, EmbedderError> {
+        let mut v = self.embed_with(&[q], "query")?;
+        Ok(v.pop().expect("non-empty"))
+    }
+
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vector>, EmbedderError> {
-        let req = EmbedRequest { input: texts, model: &self.model, input_type: "document" };
+        self.embed_with(texts, "document")
+    }
+
+    fn embed_with(&self, texts: &[&str], input_type: &'static str) -> Result<Vec<Vector>, EmbedderError> {
+        let req = EmbedRequest { input: texts, model: &self.model, input_type };
         let resp = self.client.post(&self.endpoint).bearer_auth(&self.api_key).json(&req).send();
         let resp = match resp {
             Ok(r) => r,

@@ -53,7 +53,7 @@ pub fn embed_query(cfg: &EmbedderCfg, q: &str) -> Result<Vec<f32>, String> {
                 model: model.clone(), dimensions: *dimensions,
                 endpoint: None, batch_size: *batch_size, timeout: None,
             }).map_err(|e| e.to_string())?;
-            e.embed(&[q]).map(|v| v.into_iter().next().unwrap()).map_err(|e| e.to_string())
+            e.embed_query(q).map_err(|e| e.to_string())
         }
     }
 }
