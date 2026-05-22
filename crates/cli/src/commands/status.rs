@@ -15,6 +15,7 @@ pub fn cmd_status_collection(config_path: &Path) -> Result<(), String> {
     let dim = match &cfg.embedder {
         EmbedderConfig::Stub => StubEmbedder::new().dimension() as u64,
         EmbedderConfig::Openai { dimensions, .. } => *dimensions as u64,
+        EmbedderConfig::Voyage { dimensions, .. } => *dimensions as u64,
     };
     let indexer = QdrantIndexer::open(&cfg.qdrant.url, &cfg.collection, dim).map_err(|e| e.to_string())?;
     let count = indexer.count().map_err(|e| e.to_string())?;

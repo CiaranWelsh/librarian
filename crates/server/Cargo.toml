@@ -15,6 +15,7 @@ adapter-manifest-sqlite.workspace = true
 adapter-indexer-qdrant.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-embedder-openai.workspace = true
+adapter-embedder-voyage.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

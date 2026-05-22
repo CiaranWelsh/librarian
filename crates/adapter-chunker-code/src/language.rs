@@ -15,6 +15,7 @@ pub fn detect_language(path: &Path) -> Option<String> {
         "swift" => "swift",
         "c" | "h" => "c",
         "cc" | "cpp" | "hpp" => "cpp",
+        "sip" => "sip",
         "cs" => "csharp",
         "rb" => "ruby",
         "sh" | "bash" | "zsh" => "shell",

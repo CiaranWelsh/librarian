@@ -12,7 +12,7 @@ pub const DEFAULT_SKIP_DIRS: &[&str] = &[
 /// or otherwise out-of-scope and skipped.
 pub const DEFAULT_INCLUDE_EXTS: &[&str] = &[
     "rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "kt", "swift",
-    "c", "h", "cc", "cpp", "hpp", "cs", "rb", "sh", "bash", "zsh",
+    "c", "h", "cc", "cpp", "hpp", "cs", "rb", "sh", "bash", "zsh", "sip",
     "toml", "yaml", "yml", "json", "md", "txt",
 ];
 

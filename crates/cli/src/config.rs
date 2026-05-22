@@ -46,6 +46,12 @@ pub enum EmbedderConfig {
         #[serde(default)]
         batch_size: Option<usize>,
     },
+    Voyage {
+        model: String,
+        dimensions: usize,
+        #[serde(default)]
+        batch_size: Option<usize>,
+    },
 }
 
 #[derive(Debug, Deserialize, Default)]
