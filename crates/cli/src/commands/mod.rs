@@ -1,5 +1,6 @@
 //! CLI command handlers. One module per command group.
 
+pub mod audit;
 pub mod ingest;
 pub mod lifecycle;
 pub mod remove;

@@ -34,21 +34,42 @@ pub enum SectionDecision {
 }
 
 /// Classify a section by its name (chapter / file stem). Testable core.
+///
+/// Patterns match whole words/phrases, not raw substrings, so "cover" does not
+/// match "Recovery"/"Discovery" — a false positive found by auditing the live
+/// corpus. Name and pattern are normalised to space-delimited lowercase tokens.
 pub fn classify_name(name: &str, cfg: &SectionConfig) -> SectionDecision {
-    let lname = name.to_lowercase();
-    if cfg.keep.iter().any(|p| lname.contains(&p.to_lowercase())) {
+    let nn = norm_tokens(name);
+    if cfg.keep.iter().any(|p| nn.contains(&norm_tokens(p))) {
         return SectionDecision::Index; // keep wins over exclude
     }
-    if let Some(pat) = cfg
-        .exclude
-        .iter()
-        .find(|p| lname.contains(&p.to_lowercase()))
-    {
+    if let Some(pat) = cfg.exclude.iter().find(|p| nn.contains(&norm_tokens(p))) {
         return SectionDecision::Skip {
             reason: format!("low-value section: {pat}"),
         };
     }
     SectionDecision::Index
+}
+
+/// Lowercase, collapse non-alphanumeric runs to single spaces, and wrap the
+/// result in spaces, so `contains(" word ")` becomes whole-word matching.
+fn norm_tokens(s: impl AsRef<str>) -> String {
+    let s = s.as_ref();
+    let mut out = String::from(" ");
+    let mut prev_space = true;
+    for c in s.chars() {
+        if c.is_alphanumeric() {
+            out.extend(c.to_lowercase());
+            prev_space = false;
+        } else if !prev_space {
+            out.push(' ');
+            prev_space = true;
+        }
+    }
+    if !out.ends_with(' ') {
+        out.push(' ');
+    }
+    out
 }
 
 /// Classify a document's section from its file stem. Un-chaptered content
@@ -198,6 +219,27 @@ mod tests {
     fn classification_is_case_insensitive() {
         assert!(matches!(
             classify_name("BIBLIOGRAPHY", &cfg()),
+            SectionDecision::Skip { .. }
+        ));
+    }
+
+    #[test]
+    fn pattern_matches_whole_words_not_substrings() {
+        // "cover" must not match "Recovery"/"Discovery" (a live-corpus false positive).
+        let c = SectionConfig {
+            exclude: vec!["cover".into()],
+            keep: vec![],
+        };
+        assert_eq!(
+            classify_name("Chapter-12-Exception-Handling-and-Recovery", &c),
+            SectionDecision::Index
+        );
+        assert_eq!(
+            classify_name("Chapter-21-Exploration-and-Discovery", &c),
+            SectionDecision::Index
+        );
+        assert!(matches!(
+            classify_name("Cover-Page", &c),
             SectionDecision::Skip { .. }
         ));
     }

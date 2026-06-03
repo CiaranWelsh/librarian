@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use commands::audit::cmd_audit;
 use commands::ingest::cmd_ingest;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
 use commands::remove::cmd_remove;
@@ -31,6 +32,11 @@ enum Cmd {
         #[arg(long)]
         config: PathBuf,
         input: PathBuf,
+    },
+    /// Read-only quality audit of an already-ingested collection (ADR-0006).
+    Audit {
+        #[arg(long)]
+        config: PathBuf,
     },
     /// Remove all chunks for a `source_id`.
     Remove {
@@ -76,6 +82,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.cmd {
         Cmd::Ingest { config, input } => cmd_ingest(&config, &input),
+        Cmd::Audit { config } => cmd_audit(&config),
         Cmd::Remove { config, source_id } => cmd_remove(&config, &source_id),
         Cmd::Status { config: Some(c) } => cmd_status_collection(&c),
         Cmd::Status { config: None } => cmd_fleet_status(),

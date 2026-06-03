@@ -53,6 +53,34 @@ impl SqliteManifest {
             .map_err(SqliteManifestError::Db)?;
         Ok(v)
     }
+
+    /// All `(source_id, output_ref)` for a stage whose output was cached.
+    /// Read-only helper for tools like `audit` that replay over stage outputs.
+    pub fn list_outputs(
+        &self,
+        stage: &str,
+    ) -> Result<Vec<(SourceId, CacheKey)>, SqliteManifestError> {
+        let g = self.conn.lock().expect("poisoned");
+        let mut stmt = g
+            .prepare(
+                "SELECT source_id, output_ref FROM manifest \
+                 WHERE stage = ?1 AND output_ref IS NOT NULL",
+            )
+            .map_err(SqliteManifestError::Db)?;
+        let rows = stmt
+            .query_map([stage], |r| {
+                Ok((
+                    SourceId(r.get::<_, String>(0)?),
+                    CacheKey(r.get::<_, String>(1)?),
+                ))
+            })
+            .map_err(SqliteManifestError::Db)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(SqliteManifestError::Db)?);
+        }
+        Ok(out)
+    }
 }
 
 impl ManifestStore for SqliteManifest {
@@ -120,4 +148,52 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn list_outputs_returns_only_cached_rows_for_the_stage() {
+        let dir = tempdir().unwrap();
+        let m = SqliteManifest::open(dir.path().join("m.sqlite")).unwrap();
+        let key = CacheKey("abc123".into());
+        m.record(
+            &SourceId("d0".into()),
+            "extract",
+            ManifestStatus::Success,
+            1,
+            None,
+            Some(&key),
+        )
+        .unwrap();
+        // an extract row without an output_ref is excluded
+        m.record(
+            &SourceId("d1".into()),
+            "extract",
+            ManifestStatus::Failed,
+            1,
+            Some("boom"),
+            None,
+        )
+        .unwrap();
+        // a different stage is excluded
+        m.record(
+            &SourceId("d0".into()),
+            "chunk",
+            ManifestStatus::Success,
+            1,
+            None,
+            Some(&CacheKey("zzz".into())),
+        )
+        .unwrap();
+
+        let got = m.list_outputs("extract").unwrap();
+        assert_eq!(
+            got,
+            vec![(SourceId("d0".into()), CacheKey("abc123".into()))]
+        );
+    }
 }
