@@ -6,7 +6,7 @@ use adapter_chunker_blankline::BlankLineChunker;
 use adapter_indexer_mem::MemIndexer;
 use adapter_manifest_mem::MemManifest;
 use librarian_domain::{
-    AdapterIdentity, ConfigHash, ContentType, Document, EmbedderError, Embedder, ExtractedText,
+    AdapterIdentity, ConfigHash, ContentType, Document, Embedder, EmbedderError, ExtractedText,
     Extractor, ManifestStatus, ManifestStore, SourceHash, SourceId, SpanKind, StageVersion,
     TextSpan, Vector,
 };
@@ -29,22 +29,36 @@ impl CountingExtractor {
             cfg: ConfigHash("default".into()),
         }
     }
-    fn count(&self) -> usize { self.calls.load(Ordering::SeqCst) }
+    fn count(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
 }
 impl AdapterIdentity for CountingExtractor {
-    fn name(&self) -> &str { self.name }
-    fn version(&self) -> StageVersion { self.version.clone() }
-    fn config_hash(&self) -> ConfigHash { self.cfg.clone() }
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn version(&self) -> StageVersion {
+        self.version.clone()
+    }
+    fn config_hash(&self) -> ConfigHash {
+        self.cfg.clone()
+    }
 }
-#[derive(Debug, thiserror::Error)] #[error("never")] struct EErr;
+#[derive(Debug, thiserror::Error)]
+#[error("never")]
+struct EErr;
 impl Extractor for CountingExtractor {
     type Error = EErr;
     fn extract(&self, doc: &Document) -> Result<ExtractedText, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(ExtractedText { spans: vec![TextSpan {
-            kind: SpanKind::Paragraph, text: format!("body-{}", doc.source_id.0),
-            page: None, byte_range: 0..1,
-        }]})
+        Ok(ExtractedText {
+            spans: vec![TextSpan {
+                kind: SpanKind::Paragraph,
+                text: format!("body-{}", doc.source_id.0),
+                page: None,
+                byte_range: 0..1,
+            }],
+        })
     }
 }
 
@@ -55,21 +69,37 @@ struct CountingEmbedder {
 }
 impl CountingEmbedder {
     fn new(cfg: &str) -> Self {
-        Self { calls: AtomicUsize::new(0), cfg: ConfigHash(cfg.into()) }
+        Self {
+            calls: AtomicUsize::new(0),
+            cfg: ConfigHash(cfg.into()),
+        }
     }
-    fn count(&self) -> usize { self.calls.load(Ordering::SeqCst) }
+    fn count(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
 }
 impl AdapterIdentity for CountingEmbedder {
-    fn name(&self) -> &str { "counting-emb" }
-    fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-    fn config_hash(&self) -> ConfigHash { self.cfg.clone() }
+    fn name(&self) -> &str {
+        "counting-emb"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v1".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        self.cfg.clone()
+    }
 }
 impl Embedder for CountingEmbedder {
     fn embed(&self, texts: &[&str]) -> Result<Vec<Vector>, EmbedderError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(texts.iter().map(|t| vec![t.len() as f32, 0.0, 0.0, 0.0]).collect())
+        Ok(texts
+            .iter()
+            .map(|t| vec![t.len() as f32, 0.0, 0.0, 0.0])
+            .collect())
     }
-    fn dimension(&self) -> usize { 4 }
+    fn dimension(&self) -> usize {
+        4
+    }
 }
 
 fn doc(id: &str, hash: &str) -> Document {
@@ -82,7 +112,16 @@ fn doc(id: &str, hash: &str) -> Document {
     }
 }
 
-fn make_runner(emb_cfg: &str) -> BatchRunner<CountingExtractor, BlankLineChunker, CountingEmbedder, MemIndexer, MemManifest, MemCache> {
+fn make_runner(
+    emb_cfg: &str,
+) -> BatchRunner<
+    CountingExtractor,
+    BlankLineChunker,
+    CountingEmbedder,
+    MemIndexer,
+    MemManifest,
+    MemCache,
+> {
     BatchRunner {
         pipeline: Pipeline {
             extractor: CountingExtractor::new(),
@@ -92,6 +131,7 @@ fn make_runner(emb_cfg: &str) -> BatchRunner<CountingExtractor, BlankLineChunker
         },
         manifest: MemManifest::new(),
         cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     }
 }
 
@@ -101,15 +141,34 @@ fn second_run_with_unchanged_input_calls_no_adapter_stages() {
     let docs = [doc("d0", "h0"), doc("d1", "h1")];
 
     runner.ingest_batch(&docs);
-    assert_eq!(runner.pipeline.extractor.count(), 2, "first run: extract per doc");
-    assert_eq!(runner.pipeline.embedder.count(), 2, "first run: embed per doc");
+    assert_eq!(
+        runner.pipeline.extractor.count(),
+        2,
+        "first run: extract per doc"
+    );
+    assert_eq!(
+        runner.pipeline.embedder.count(),
+        2,
+        "first run: embed per doc"
+    );
 
     runner.ingest_batch(&docs);
-    assert_eq!(runner.pipeline.extractor.count(), 2, "second run: extract cached");
-    assert_eq!(runner.pipeline.embedder.count(), 2, "second run: embed cached");
+    assert_eq!(
+        runner.pipeline.extractor.count(),
+        2,
+        "second run: extract cached"
+    );
+    assert_eq!(
+        runner.pipeline.embedder.count(),
+        2,
+        "second run: embed cached"
+    );
 
     // Manifest reflects: most recent rows are Cached for extract/chunk/embed.
-    let cached = runner.manifest.list_by_status(ManifestStatus::Cached).unwrap();
+    let cached = runner
+        .manifest
+        .list_by_status(ManifestStatus::Cached)
+        .unwrap();
     let cached_stages: std::collections::HashSet<_> =
         cached.iter().map(|(_, s)| s.as_str()).collect();
     assert!(cached_stages.contains("extract"));
@@ -134,6 +193,7 @@ fn embedder_config_change_busts_only_embed_cache() {
             },
             manifest: &manifest,
             cache: &cache,
+            quality: librarian_domain::QualityConfig::default(),
         };
         r.ingest_batch(&[doc("d0", "h0")]);
         assert_eq!(r.pipeline.extractor.count(), 1);
@@ -150,10 +210,19 @@ fn embedder_config_change_busts_only_embed_cache() {
         },
         manifest: &manifest,
         cache: &cache,
+        quality: librarian_domain::QualityConfig::default(),
     };
     r2.ingest_batch(&[doc("d0", "h0")]);
-    assert_eq!(r2.pipeline.extractor.count(), 0, "extract cached across version bump");
-    assert_eq!(r2.pipeline.embedder.count(), 1, "embed re-runs after config change");
+    assert_eq!(
+        r2.pipeline.extractor.count(),
+        0,
+        "extract cached across version bump"
+    );
+    assert_eq!(
+        r2.pipeline.embedder.count(),
+        1,
+        "embed re-runs after config change"
+    );
 }
 
 #[test]
@@ -163,6 +232,14 @@ fn adding_a_new_document_to_the_tree_triggers_exactly_one_new_embed() {
     assert_eq!(runner.pipeline.embedder.count(), 2);
 
     runner.ingest_batch(&[doc("d0", "h0"), doc("d1", "h1"), doc("d2", "h2")]);
-    assert_eq!(runner.pipeline.embedder.count(), 3, "only the new doc embeds");
-    assert_eq!(runner.pipeline.extractor.count(), 3, "only the new doc extracts");
+    assert_eq!(
+        runner.pipeline.embedder.count(),
+        3,
+        "only the new doc embeds"
+    );
+    assert_eq!(
+        runner.pipeline.extractor.count(),
+        3,
+        "only the new doc extracts"
+    );
 }

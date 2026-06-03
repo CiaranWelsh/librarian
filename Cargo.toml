@@ -13,8 +13,10 @@ members = [
     "crates/adapter-extractor-text",
     "crates/adapter-extractor-pdf",
     "crates/adapter-extractor-ebook",
+    "crates/adapter-extractor-html",
     "crates/adapter-extractor-code",
     "crates/adapter-chunker-code",
+    "crates/markdown-cleaner",
     "crates/adapter-embedder-voyage",
     "crates/adapter-embedder-multimodal-stub",
     "crates/adapter-chunker-blankline",
@@ -44,8 +46,10 @@ adapter-snapshotter-qdrant-nas = { path = "crates/adapter-snapshotter-qdrant-nas
 adapter-extractor-text = { path = "crates/adapter-extractor-text" }
 adapter-extractor-pdf = { path = "crates/adapter-extractor-pdf" }
 adapter-extractor-ebook = { path = "crates/adapter-extractor-ebook" }
+adapter-extractor-html = { path = "crates/adapter-extractor-html" }
 adapter-extractor-code = { path = "crates/adapter-extractor-code" }
 adapter-chunker-code = { path = "crates/adapter-chunker-code" }
+markdown-cleaner = { path = "crates/markdown-cleaner" }
 adapter-embedder-voyage = { path = "crates/adapter-embedder-voyage" }
 adapter-embedder-multimodal-stub = { path = "crates/adapter-embedder-multimodal-stub" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }

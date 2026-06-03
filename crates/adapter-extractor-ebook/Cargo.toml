@@ -9,5 +9,4 @@ rust-version.workspace = true
 librarian-domain.workspace = true
 thiserror.workspace = true
 tempfile.workspace = true
-regex.workspace = true
-once_cell.workspace = true
+markdown-cleaner.workspace = true

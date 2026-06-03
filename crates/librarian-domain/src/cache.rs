@@ -39,6 +39,10 @@ pub trait Cache {
 
 impl<T: Cache + ?Sized> Cache for &T {
     type Error = T::Error;
-    fn get(&self, key: &CacheKey) -> Result<Option<Vec<u8>>, Self::Error> { (**self).get(key) }
-    fn put(&self, key: &CacheKey, value: &[u8]) -> Result<(), Self::Error> { (**self).put(key, value) }
+    fn get(&self, key: &CacheKey) -> Result<Option<Vec<u8>>, Self::Error> {
+        (**self).get(key)
+    }
+    fn put(&self, key: &CacheKey, value: &[u8]) -> Result<(), Self::Error> {
+        (**self).put(key, value)
+    }
 }

@@ -28,29 +28,48 @@ struct Cli {
 enum Cmd {
     /// Ingest a file or directory tree into the configured collection.
     Ingest {
-        #[arg(long)] config: PathBuf,
+        #[arg(long)]
+        config: PathBuf,
         input: PathBuf,
     },
     /// Remove all chunks for a `source_id`.
     Remove {
-        #[arg(long)] config: PathBuf,
-        #[arg(long = "source-id")] source_id: String,
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long = "source-id")]
+        source_id: String,
     },
     /// Without --config: fleet status (all collections in registry).
     /// With --config: single-collection point count + manifest summary.
     Status {
-        #[arg(long)] config: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
     },
     /// Snapshot the collection.
-    Snapshot { #[arg(long)] config: PathBuf },
+    Snapshot {
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Restore from snapshot id.
-    Restore { #[arg(long)] config: PathBuf, snapshot_id: String },
+    Restore {
+        #[arg(long)]
+        config: PathBuf,
+        snapshot_id: String,
+    },
     /// Start a per-collection MCP server, registered under `name`.
-    Start   { name: String, #[arg(long)] config: PathBuf },
+    Start {
+        name: String,
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Stop a registered MCP server by name.
-    Stop    { name: String },
+    Stop { name: String },
     /// Restart a registered MCP server by name.
-    Restart { name: String, #[arg(long)] config: PathBuf },
+    Restart {
+        name: String,
+        #[arg(long)]
+        config: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -61,7 +80,10 @@ fn main() -> ExitCode {
         Cmd::Status { config: Some(c) } => cmd_status_collection(&c),
         Cmd::Status { config: None } => cmd_fleet_status(),
         Cmd::Snapshot { config } => cmd_snapshot(&config),
-        Cmd::Restore { config, snapshot_id } => cmd_restore(&config, &snapshot_id),
+        Cmd::Restore {
+            config,
+            snapshot_id,
+        } => cmd_restore(&config, &snapshot_id),
         Cmd::Start { name, config } => cmd_start(&name, &config),
         Cmd::Stop { name } => cmd_stop(&name),
         Cmd::Restart { name, config } => cmd_restart(&name, &config),

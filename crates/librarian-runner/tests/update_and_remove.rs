@@ -18,22 +18,38 @@ struct ScriptedExtractor {
     next: RefCell<Vec<&'static str>>,
 }
 impl ScriptedExtractor {
-    fn new(scripts: Vec<&'static str>) -> Self { Self { next: RefCell::new(scripts) } }
+    fn new(scripts: Vec<&'static str>) -> Self {
+        Self {
+            next: RefCell::new(scripts),
+        }
+    }
 }
 impl AdapterIdentity for ScriptedExtractor {
-    fn name(&self) -> &str { "scripted" }
-    fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    fn name(&self) -> &str {
+        "scripted"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v1".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("c".into())
+    }
 }
-#[derive(Debug, thiserror::Error)] #[error("never")] struct EErr;
+#[derive(Debug, thiserror::Error)]
+#[error("never")]
+struct EErr;
 impl Extractor for ScriptedExtractor {
     type Error = EErr;
     fn extract(&self, _doc: &Document) -> Result<ExtractedText, Self::Error> {
         let body = self.next.borrow_mut().remove(0);
-        Ok(ExtractedText { spans: vec![TextSpan {
-            kind: SpanKind::Paragraph, text: body.into(), page: None,
-            byte_range: 0..body.len(),
-        }]})
+        Ok(ExtractedText {
+            spans: vec![TextSpan {
+                kind: SpanKind::Paragraph,
+                text: body.into(),
+                page: None,
+                byte_range: 0..body.len(),
+            }],
+        })
     }
 }
 
@@ -52,25 +68,34 @@ fn update_with_fewer_chunks_drops_orphans() {
     // 5 paragraphs → 3 paragraphs after edit. The two trailing chunks must vanish.
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: ScriptedExtractor::new(vec![
-                "p0\n\np1\n\np2\n\np3\n\np4",
-                "p0\n\np1\n\np2",
-            ]),
+            extractor: ScriptedExtractor::new(vec!["p0\n\np1\n\np2\n\np3\n\np4", "p0\n\np1\n\np2"]),
             chunker: BlankLineChunker::new(),
             embedder: StubEmbedder::new(),
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
         cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d0", "h-original")]);
-    assert_eq!(runner.pipeline.indexer.by_source(&SourceId("d0".into())).len(), 5);
+    assert_eq!(
+        runner
+            .pipeline
+            .indexer
+            .by_source(&SourceId("d0".into()))
+            .len(),
+        5
+    );
 
     // Source content changed → new source_hash. Cache for prior hash doesn't apply.
     runner.ingest_batch(&[doc("d0", "h-edited")]);
     assert_eq!(
-        runner.pipeline.indexer.by_source(&SourceId("d0".into())).len(),
+        runner
+            .pipeline
+            .indexer
+            .by_source(&SourceId("d0".into()))
+            .len(),
         3,
         "no orphans from prior 5-chunk version",
     );
@@ -91,15 +116,30 @@ fn update_does_not_disturb_other_sources() {
         },
         manifest: MemManifest::new(),
         cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d_a", "ha-1"), doc("d_b", "hb-1")]);
     assert_eq!(runner.pipeline.indexer.count(), 5);
 
     runner.ingest_batch(&[doc("d_a", "ha-2")]);
-    assert_eq!(runner.pipeline.indexer.by_source(&SourceId("d_a".into())).len(), 1);
-    assert_eq!(runner.pipeline.indexer.by_source(&SourceId("d_b".into())).len(), 2,
-               "d_b untouched by d_a's update");
+    assert_eq!(
+        runner
+            .pipeline
+            .indexer
+            .by_source(&SourceId("d_a".into()))
+            .len(),
+        1
+    );
+    assert_eq!(
+        runner
+            .pipeline
+            .indexer
+            .by_source(&SourceId("d_b".into()))
+            .len(),
+        2,
+        "d_b untouched by d_a's update"
+    );
 }
 
 #[test]
@@ -113,6 +153,7 @@ fn remove_drops_all_chunks_and_records_removed_status() {
         },
         manifest: MemManifest::new(),
         cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d0", "h0")]);
@@ -121,10 +162,16 @@ fn remove_drops_all_chunks_and_records_removed_status() {
     runner.remove(&SourceId("d0".into())).expect("remove");
     assert_eq!(runner.pipeline.indexer.count(), 0);
 
-    let removed = runner.manifest.list_by_status(ManifestStatus::Removed).unwrap();
+    let removed = runner
+        .manifest
+        .list_by_status(ManifestStatus::Removed)
+        .unwrap();
     let stages: std::collections::HashSet<_> = removed.iter().map(|(_, s)| s.as_str()).collect();
     for stage in ["extract", "chunk", "embed", "index"] {
-        assert!(stages.contains(stage), "Removed status missing for stage {stage}");
+        assert!(
+            stages.contains(stage),
+            "Removed status missing for stage {stage}"
+        );
     }
 }
 
@@ -139,10 +186,20 @@ fn remove_of_unknown_source_is_a_noop() {
         },
         manifest: MemManifest::new(),
         cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
-    runner.remove(&SourceId("never-ingested".into())).expect("remove");
+    runner
+        .remove(&SourceId("never-ingested".into()))
+        .expect("remove");
     assert_eq!(runner.pipeline.indexer.count(), 0);
     // Still records Removed rows — the manifest is the audit log of operator intent.
-    assert_eq!(runner.manifest.list_by_status(ManifestStatus::Removed).unwrap().len(), 4);
+    assert_eq!(
+        runner
+            .manifest
+            .list_by_status(ManifestStatus::Removed)
+            .unwrap()
+            .len(),
+        4
+    );
 }

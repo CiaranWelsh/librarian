@@ -22,7 +22,7 @@ use librarian_domain::{
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::cleaner::clean;
+use markdown_cleaner::clean;
 use crate::error::EbookExtractError;
 
 pub struct EbookExtractor {

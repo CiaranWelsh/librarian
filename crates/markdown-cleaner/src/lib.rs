@@ -1,7 +1,10 @@
-//! Post-process pandoc's GFM output. EPUB is structured HTML, so the input is
-//! already clean text — but pandoc preserves the original `<div>`/`<span>`
-//! wrappers and calibre (for MOBI→EPUB) inlines code as `<span class="kbd …">`.
-//! This module strips that noise and recovers inline code as proper backticks.
+//! Post-process pandoc's GFM output. Structured-HTML sources (EPUB, raw HTML)
+//! produce already-clean text — but pandoc preserves the original `<div>`/`<span>`
+//! wrappers, and calibre (for MOBI→EPUB) inlines code as `<span class="kbd …">`.
+//! This crate strips that noise and recovers inline code as proper backticks.
+//!
+//! Shared by the `ebook` and `html` extractor adapters: both run pandoc to GFM,
+//! then `clean()` the result.
 
 use once_cell::sync::Lazy;
 use regex::Regex;

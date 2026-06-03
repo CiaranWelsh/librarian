@@ -1,0 +1,14 @@
+[package]
+name = "adapter-extractor-html"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+librarian-domain.workspace = true
+thiserror.workspace = true
+markdown-cleaner.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

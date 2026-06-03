@@ -39,7 +39,10 @@ where
     Em: Embedder,
     Ix: Indexer,
 {
-    pub fn run(&self, doc: &Document) -> Result<RunSummary, RunError<E::Error, Ch::Error, Ix::Error>> {
+    pub fn run(
+        &self,
+        doc: &Document,
+    ) -> Result<RunSummary, RunError<E::Error, Ch::Error, Ix::Error>> {
         let extracted = self.extractor.extract(doc).map_err(RunError::Extract)?;
         let mut chunks = self
             .chunker
@@ -103,56 +106,105 @@ mod stub_tests {
     #[derive(Default)]
     struct CallLog(RefCell<Vec<&'static str>>);
     impl CallLog {
-        fn push(&self, s: &'static str) { self.0.borrow_mut().push(s); }
-        fn snapshot(&self) -> Vec<&'static str> { self.0.borrow().clone() }
+        fn push(&self, s: &'static str) {
+            self.0.borrow_mut().push(s);
+        }
+        fn snapshot(&self) -> Vec<&'static str> {
+            self.0.borrow().clone()
+        }
     }
 
-    struct StubExtractor<'a> { log: &'a CallLog, n_spans: usize }
-    impl<'a> AdapterIdentity for StubExtractor<'a> {
-        fn name(&self) -> &str { "stub-extract" }
-        fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-        fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    struct StubExtractor<'a> {
+        log: &'a CallLog,
+        n_spans: usize,
     }
-    #[derive(Debug, thiserror::Error)] #[error("stub-extract")] struct ExtErr;
+    impl<'a> AdapterIdentity for StubExtractor<'a> {
+        fn name(&self) -> &str {
+            "stub-extract"
+        }
+        fn version(&self) -> StageVersion {
+            StageVersion("v1".into())
+        }
+        fn config_hash(&self) -> ConfigHash {
+            ConfigHash("c".into())
+        }
+    }
+    #[derive(Debug, thiserror::Error)]
+    #[error("stub-extract")]
+    struct ExtErr;
     impl<'a> Extractor for StubExtractor<'a> {
         type Error = ExtErr;
         fn extract(&self, _: &Document) -> Result<ExtractedText, Self::Error> {
             self.log.push("extract");
-            Ok(ExtractedText { spans: (0..self.n_spans).map(|i| TextSpan {
-                kind: SpanKind::Paragraph, text: format!("p{i}"), page: None, byte_range: 0..2,
-            }).collect() })
+            Ok(ExtractedText {
+                spans: (0..self.n_spans)
+                    .map(|i| TextSpan {
+                        kind: SpanKind::Paragraph,
+                        text: format!("p{i}"),
+                        page: None,
+                        byte_range: 0..2,
+                    })
+                    .collect(),
+            })
         }
     }
 
-    struct StubChunker<'a> { log: &'a CallLog }
-    impl<'a> AdapterIdentity for StubChunker<'a> {
-        fn name(&self) -> &str { "stub-chunk" }
-        fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-        fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    struct StubChunker<'a> {
+        log: &'a CallLog,
     }
-    #[derive(Debug, thiserror::Error)] #[error("stub-chunk")] struct ChErr;
+    impl<'a> AdapterIdentity for StubChunker<'a> {
+        fn name(&self) -> &str {
+            "stub-chunk"
+        }
+        fn version(&self) -> StageVersion {
+            StageVersion("v1".into())
+        }
+        fn config_hash(&self) -> ConfigHash {
+            ConfigHash("c".into())
+        }
+    }
+    #[derive(Debug, thiserror::Error)]
+    #[error("stub-chunk")]
+    struct ChErr;
     impl<'a> Chunker for StubChunker<'a> {
         type Error = ChErr;
         fn chunk(&self, doc: &Document, t: ExtractedText) -> Result<Vec<Chunk>, Self::Error> {
             self.log.push("chunk");
-            Ok(t.spans.into_iter().enumerate().map(|(i, s)| Chunk {
-                chunk_id: ChunkId(format!("{}#{i}", doc.source_id.0)),
-                source_id: doc.source_id.clone(),
-                chunk_index: i as u32,
-                text: s.text,
-                payload: ChunkPayload::Book(BookMeta {
-                    title: "t".into(), author: None, chapter: None, section: None, page: None,
-                }),
-                provenance: Provenance::default(),
-            }).collect())
+            Ok(t.spans
+                .into_iter()
+                .enumerate()
+                .map(|(i, s)| Chunk {
+                    chunk_id: ChunkId(format!("{}#{i}", doc.source_id.0)),
+                    source_id: doc.source_id.clone(),
+                    chunk_index: i as u32,
+                    text: s.text,
+                    payload: ChunkPayload::Book(BookMeta {
+                        title: "t".into(),
+                        author: None,
+                        chapter: None,
+                        section: None,
+                        page: None,
+                    }),
+                    provenance: Provenance::default(),
+                })
+                .collect())
         }
     }
 
-    struct StubEmbedder<'a> { log: &'a CallLog, fail: Option<EmbedderError> }
+    struct StubEmbedder<'a> {
+        log: &'a CallLog,
+        fail: Option<EmbedderError>,
+    }
     impl<'a> AdapterIdentity for StubEmbedder<'a> {
-        fn name(&self) -> &str { "stub-embed" }
-        fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-        fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+        fn name(&self) -> &str {
+            "stub-embed"
+        }
+        fn version(&self) -> StageVersion {
+            StageVersion("v1".into())
+        }
+        fn config_hash(&self) -> ConfigHash {
+            ConfigHash("c".into())
+        }
     }
     impl<'a> Embedder for StubEmbedder<'a> {
         fn embed(&self, texts: &[&str]) -> Result<Vec<Vector>, EmbedderError> {
@@ -165,27 +217,47 @@ mod stub_tests {
             }
             Ok(texts.iter().map(|_| vec![0.0]).collect())
         }
-        fn dimension(&self) -> usize { 1 }
+        fn dimension(&self) -> usize {
+            1
+        }
     }
 
     #[derive(Default)]
-    struct StubIndexer<'a> { log: Option<&'a CallLog>, calls: RefCell<usize>, last_len: RefCell<usize> }
-    impl<'a> AdapterIdentity for StubIndexer<'a> {
-        fn name(&self) -> &str { "stub-index" }
-        fn version(&self) -> StageVersion { StageVersion("v1".into()) }
-        fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    struct StubIndexer<'a> {
+        log: Option<&'a CallLog>,
+        calls: RefCell<usize>,
+        last_len: RefCell<usize>,
     }
-    #[derive(Debug, thiserror::Error)] #[error("stub-index")] struct IxErr;
+    impl<'a> AdapterIdentity for StubIndexer<'a> {
+        fn name(&self) -> &str {
+            "stub-index"
+        }
+        fn version(&self) -> StageVersion {
+            StageVersion("v1".into())
+        }
+        fn config_hash(&self) -> ConfigHash {
+            ConfigHash("c".into())
+        }
+    }
+    #[derive(Debug, thiserror::Error)]
+    #[error("stub-index")]
+    struct IxErr;
     impl<'a> Indexer for StubIndexer<'a> {
         type Error = IxErr;
         fn upsert(&self, chunks: &[Chunk], _: &[Vector]) -> Result<(), Self::Error> {
-            if let Some(l) = self.log { l.push("index"); }
+            if let Some(l) = self.log {
+                l.push("index");
+            }
             *self.calls.borrow_mut() += 1;
             *self.last_len.borrow_mut() = chunks.len();
             Ok(())
         }
-        fn replace(&self, _: &SourceId, _: &[Chunk], _: &[Vector]) -> Result<(), Self::Error> { unreachable!() }
-        fn delete_by_source_id(&self, _: &SourceId) -> Result<(), Self::Error> { unreachable!() }
+        fn replace(&self, _: &SourceId, _: &[Chunk], _: &[Vector]) -> Result<(), Self::Error> {
+            unreachable!()
+        }
+        fn delete_by_source_id(&self, _: &SourceId) -> Result<(), Self::Error> {
+            unreachable!()
+        }
     }
 
     fn doc() -> Document {
@@ -201,11 +273,20 @@ mod stub_tests {
     #[test]
     fn stages_invoked_in_order_extract_chunk_embed_index() {
         let log = CallLog::default();
-        let ix = StubIndexer { log: Some(&log), ..Default::default() };
+        let ix = StubIndexer {
+            log: Some(&log),
+            ..Default::default()
+        };
         let p = Pipeline {
-            extractor: StubExtractor { log: &log, n_spans: 2 },
+            extractor: StubExtractor {
+                log: &log,
+                n_spans: 2,
+            },
             chunker: StubChunker { log: &log },
-            embedder: StubEmbedder { log: &log, fail: None },
+            embedder: StubEmbedder {
+                log: &log,
+                fail: None,
+            },
             indexer: ix,
         };
         let s = p.run(&doc()).unwrap();
@@ -218,21 +299,31 @@ mod stub_tests {
     fn extractor_failure_stops_pipeline_before_chunk() {
         struct FailingExt<'a>(&'a CallLog);
         impl<'a> AdapterIdentity for FailingExt<'a> {
-            fn name(&self) -> &str { "fail-ext" }
-            fn version(&self) -> StageVersion { StageVersion("v".into()) }
-            fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+            fn name(&self) -> &str {
+                "fail-ext"
+            }
+            fn version(&self) -> StageVersion {
+                StageVersion("v".into())
+            }
+            fn config_hash(&self) -> ConfigHash {
+                ConfigHash("c".into())
+            }
         }
         impl<'a> Extractor for FailingExt<'a> {
             type Error = ExtErr;
             fn extract(&self, _: &Document) -> Result<ExtractedText, Self::Error> {
-                self.0.push("extract"); Err(ExtErr)
+                self.0.push("extract");
+                Err(ExtErr)
             }
         }
         let log = CallLog::default();
         let p = Pipeline {
             extractor: FailingExt(&log),
             chunker: StubChunker { log: &log },
-            embedder: StubEmbedder { log: &log, fail: None },
+            embedder: StubEmbedder {
+                log: &log,
+                fail: None,
+            },
             indexer: StubIndexer::<'_>::default(),
         };
         let r = p.run(&doc());
@@ -244,23 +335,41 @@ mod stub_tests {
     fn embedder_recoverable_surfaces_as_run_error_embed() {
         let log = CallLog::default();
         let p = Pipeline {
-            extractor: StubExtractor { log: &log, n_spans: 1 },
+            extractor: StubExtractor {
+                log: &log,
+                n_spans: 1,
+            },
             chunker: StubChunker { log: &log },
-            embedder: StubEmbedder { log: &log, fail: Some(EmbedderError::Recoverable("net".into())) },
+            embedder: StubEmbedder {
+                log: &log,
+                fail: Some(EmbedderError::Recoverable("net".into())),
+            },
             indexer: StubIndexer::<'_>::default(),
         };
         let r = p.run(&doc());
-        assert!(matches!(r, Err(RunError::Embed(EmbedderError::Recoverable(_)))));
+        assert!(matches!(
+            r,
+            Err(RunError::Embed(EmbedderError::Recoverable(_)))
+        ));
     }
 
     #[test]
     fn provenance_appends_three_links_per_chunk() {
         let log = CallLog::default();
-        let ix = StubIndexer { log: Some(&log), ..Default::default() };
+        let ix = StubIndexer {
+            log: Some(&log),
+            ..Default::default()
+        };
         let p = Pipeline {
-            extractor: StubExtractor { log: &log, n_spans: 1 },
+            extractor: StubExtractor {
+                log: &log,
+                n_spans: 1,
+            },
             chunker: StubChunker { log: &log },
-            embedder: StubEmbedder { log: &log, fail: None },
+            embedder: StubEmbedder {
+                log: &log,
+                fail: None,
+            },
             indexer: ix,
         };
         p.run(&doc()).unwrap();

@@ -21,6 +21,7 @@ mod indexer;
 mod manifest;
 mod payload;
 mod provenance;
+mod quality;
 mod snapshotter;
 mod work;
 
@@ -39,5 +40,9 @@ pub use indexer::Indexer;
 pub use manifest::{ManifestStatus, ManifestStore};
 pub use payload::{BookMeta, ChunkPayload, CodeMeta, FigureMeta, PaperMeta};
 pub use provenance::{Provenance, ProvenanceLink};
+pub use quality::{
+    classify_name, classify_section, garble_signal, garble_text, GarbleConfig, GarbleSignal,
+    QualityConfig, SectionConfig, SectionDecision,
+};
 pub use snapshotter::Snapshotter;
 pub use work::Work;

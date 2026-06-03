@@ -43,8 +43,11 @@ impl Registry {
             std::fs::create_dir_all(parent).map_err(|e| format!("registry parent: {e}"))?;
         }
         let conn = Connection::open(path).map_err(|e| format!("registry open: {e}"))?;
-        conn.execute_batch(SCHEMA).map_err(|e| format!("registry schema: {e}"))?;
-        Ok(Self { conn: Mutex::new(conn) })
+        conn.execute_batch(SCHEMA)
+            .map_err(|e| format!("registry schema: {e}"))?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn get(&self, name: &str) -> Result<Option<Row>, String> {
@@ -53,32 +56,49 @@ impl Registry {
             "SELECT name, config_path, port, pid, status, started_at FROM fleet WHERE name = ?1",
             params![name],
             row_from,
-        ).optional().map_err(|e| e.to_string())
+        )
+        .optional()
+        .map_err(|e| e.to_string())
     }
 
     pub fn all(&self) -> Result<Vec<Row>, String> {
         let g = self.conn.lock().expect("poisoned");
         let mut stmt = g
-            .prepare("SELECT name, config_path, port, pid, status, started_at FROM fleet ORDER BY name")
+            .prepare(
+                "SELECT name, config_path, port, pid, status, started_at FROM fleet ORDER BY name",
+            )
             .map_err(|e| e.to_string())?;
         let iter = stmt.query_map([], row_from).map_err(|e| e.to_string())?;
         let mut out = Vec::new();
-        for r in iter { out.push(r.map_err(|e| e.to_string())?); }
+        for r in iter {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
         Ok(out)
     }
 
     pub fn used_ports(&self) -> Result<Vec<u16>, String> {
         let g = self.conn.lock().expect("poisoned");
-        let mut stmt = g.prepare("SELECT port FROM fleet").map_err(|e| e.to_string())?;
-        let iter = stmt.query_map([], |r| Ok(r.get::<_, i64>(0)? as u16)).map_err(|e| e.to_string())?;
+        let mut stmt = g
+            .prepare("SELECT port FROM fleet")
+            .map_err(|e| e.to_string())?;
+        let iter = stmt
+            .query_map([], |r| Ok(r.get::<_, i64>(0)? as u16))
+            .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
-        for r in iter { out.push(r.map_err(|e| e.to_string())?); }
+        for r in iter {
+            out.push(r.map_err(|e| e.to_string())?);
+        }
         Ok(out)
     }
 
     pub fn upsert(
-        &self, name: &str, config_path: &str, port: u16, pid: Option<i32>,
-        status: &str, started_at: Option<i64>,
+        &self,
+        name: &str,
+        config_path: &str,
+        port: u16,
+        pid: Option<i32>,
+        status: &str,
+        started_at: Option<i64>,
     ) -> Result<(), String> {
         let g = self.conn.lock().expect("poisoned");
         g.execute(
@@ -91,7 +111,8 @@ impl Registry {
                 status = excluded.status,
                 started_at = excluded.started_at",
             params![name, config_path, port as i64, pid, status, started_at],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -100,7 +121,8 @@ impl Registry {
         g.execute(
             "UPDATE fleet SET status = 'stopped', pid = NULL, started_at = NULL WHERE name = ?1",
             params![name],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 }
@@ -123,7 +145,10 @@ pub fn pid_alive(pid: i32) -> bool {
 }
 
 fn now_unix() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 fn child_binary() -> PathBuf {
@@ -136,10 +161,14 @@ fn child_binary() -> PathBuf {
 fn pick_port(reg: &Registry, prefer: Option<u16>) -> Result<u16, String> {
     let used: std::collections::HashSet<u16> = reg.used_ports()?.into_iter().collect();
     if let Some(p) = prefer {
-        if !used.contains(&p) { return Ok(p); }
+        if !used.contains(&p) {
+            return Ok(p);
+        }
     }
     for p in PORT_BASE..PORT_BASE + PORT_RANGE {
-        if !used.contains(&p) { return Ok(p); }
+        if !used.contains(&p) {
+            return Ok(p);
+        }
     }
     Err("no free ports in range".into())
 }
@@ -149,7 +178,10 @@ pub fn start(reg: &Registry, name: &str, config_path: &Path) -> Result<String, S
         if row.status == "running" {
             if let Some(pid) = row.pid {
                 if pid_alive(pid) {
-                    return Ok(format!("already running\tname={name}\tpid={pid}\tport={}", row.port));
+                    return Ok(format!(
+                        "already running\tname={name}\tpid={pid}\tport={}",
+                        row.port
+                    ));
                 }
             }
         }
@@ -157,15 +189,24 @@ pub fn start(reg: &Registry, name: &str, config_path: &Path) -> Result<String, S
     let port = pick_port(reg, reg.get(name)?.map(|r| r.port))?;
     let bin = child_binary();
     let child = Command::new(&bin)
-        .arg("--config").arg(config_path)
-        .arg("--port").arg(port.to_string())
+        .arg("--config")
+        .arg(config_path)
+        .arg("--port")
+        .arg(port.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("spawn {}: {}", bin.display(), e))?;
     let pid = child.id() as i32;
-    reg.upsert(name, &config_path.display().to_string(), port, Some(pid), "running", Some(now_unix()))?;
+    reg.upsert(
+        name,
+        &config_path.display().to_string(),
+        port,
+        Some(pid),
+        "running",
+        Some(now_unix()),
+    )?;
     // Detach: drop the Child without waiting. PID stays valid; supervisor
     // observes liveness via signal 0.
     std::mem::forget(child);
@@ -181,14 +222,20 @@ pub fn stop(reg: &Registry, name: &str) -> Result<String, String> {
         return Ok(format!("already stopped\tname={name}"));
     }
     if let Some(pid) = row.pid {
-        unsafe { libc::kill(pid, libc::SIGTERM); }
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
         // Wait briefly for clean exit.
         for _ in 0..100 {
-            if !pid_alive(pid) { break; }
+            if !pid_alive(pid) {
+                break;
+            }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         if pid_alive(pid) {
-            unsafe { libc::kill(pid, libc::SIGKILL); }
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
         }
     }
     reg.mark_stopped(name)?;
@@ -216,13 +263,16 @@ pub fn fleet_status(reg: &Registry) -> Result<Vec<(Row, u64)>, String> {
             }
         }
     }
-    Ok(rows.into_iter().map(|r| {
-        let uptime = match r.started_at {
-            Some(s) if r.status == "running" => (now - s).max(0) as u64,
-            _ => 0,
-        };
-        (r, uptime)
-    }).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let uptime = match r.started_at {
+                Some(s) if r.status == "running" => (now - s).max(0) as u64,
+                _ => 0,
+            };
+            (r, uptime)
+        })
+        .collect())
 }
 
 pub fn registry_path() -> PathBuf {

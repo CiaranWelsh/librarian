@@ -20,10 +20,16 @@ pub fn cmd_remove(config_path: &Path, source_id: &str) -> Result<(), String> {
             extractor: TextExtractor::new(),
             chunker: BlankLineChunker::new(),
             embedder: StubEmbedder::new(),
-            indexer: QdrantIndexer::open(&cfg.qdrant.url, &cfg.collection, StubEmbedder::new().dimension() as u64)
-                .map_err(|e| e.to_string())?,
+            indexer: QdrantIndexer::open(
+                &cfg.qdrant.url,
+                &cfg.collection,
+                StubEmbedder::new().dimension() as u64,
+            )
+            .map_err(|e| e.to_string())?,
         },
-        manifest, cache,
+        manifest,
+        cache,
+        quality: librarian_domain::QualityConfig::default(),
     };
     runner.remove(&SourceId(source_id.into()))?;
     println!("removed {source_id}");

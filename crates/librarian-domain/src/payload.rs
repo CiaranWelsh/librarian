@@ -57,15 +57,25 @@ mod tests {
     fn chunk_payload_serde_preserves_variant() {
         let cases = vec![
             ChunkPayload::Book(BookMeta {
-                title: "t".into(), author: None, chapter: None, section: None, page: Some(3),
+                title: "t".into(),
+                author: None,
+                chapter: None,
+                section: None,
+                page: Some(3),
             }),
             ChunkPayload::Paper(PaperMeta {
-                title: "t".into(), authors: vec!["a".into()], section: None,
-                page_start: Some(1), page_end: Some(2),
+                title: "t".into(),
+                authors: vec!["a".into()],
+                section: None,
+                page_start: Some(1),
+                page_end: Some(2),
             }),
             ChunkPayload::Code(CodeMeta {
-                repo: None, commit: None, file_path: "x.rs".into(),
-                language: Some("rust".into()), symbol: None,
+                repo: None,
+                commit: None,
+                file_path: "x.rs".into(),
+                language: Some("rust".into()),
+                symbol: None,
             }),
         ];
         for c in cases {

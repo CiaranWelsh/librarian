@@ -12,7 +12,10 @@ fn qdrant_url() -> String {
 }
 
 fn unique_collection(label: &str) -> String {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     format!("librarian-cli-{label}-{nanos}")
 }
 
@@ -61,36 +64,48 @@ fn ingest_status_remove_status_round_trip() {
     // Before checking Qdrant via the CLI, ensure Qdrant is reachable. Using the
     // `status` command with no prior ingest as a probe — if the binary fails
     // here we skip the rest with a printed note.
-    let probe = Command::cargo_bin("librarian").unwrap()
-        .arg("status").arg("--config").arg(&cfg)
+    let probe = Command::cargo_bin("librarian")
+        .unwrap()
+        .arg("status")
+        .arg("--config")
+        .arg(&cfg)
         .assert();
     if !probe.get_output().status.success() {
         eprintln!("skip: Qdrant not reachable at {}", qdrant_url());
         return;
     }
 
-    Command::cargo_bin("librarian").unwrap()
-        .args(["ingest", "--config"]).arg(&cfg).arg(&fixture)
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["ingest", "--config"])
+        .arg(&cfg)
+        .arg(&fixture)
         .assert()
         .success()
         .stdout(contains("ok\t").and(contains("chunks=3")));
 
-    Command::cargo_bin("librarian").unwrap()
-        .args(["status", "--config"]).arg(&cfg)
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["status", "--config"])
+        .arg(&cfg)
         .assert()
         .success()
         .stdout(contains("points: 3"));
 
     let source_id = fixture.display().to_string();
-    Command::cargo_bin("librarian").unwrap()
-        .args(["remove", "--config"]).arg(&cfg)
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["remove", "--config"])
+        .arg(&cfg)
         .args(["--source-id", &source_id])
         .assert()
         .success()
         .stdout(contains(&format!("removed {source_id}")));
 
-    Command::cargo_bin("librarian").unwrap()
-        .args(["status", "--config"]).arg(&cfg)
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["status", "--config"])
+        .arg(&cfg)
         .assert()
         .success()
         .stdout(contains("points: 0"));
@@ -98,7 +113,8 @@ fn ingest_status_remove_status_round_trip() {
 
 #[test]
 fn missing_config_file_yields_human_readable_error_and_nonzero_exit() {
-    Command::cargo_bin("librarian").unwrap()
+    Command::cargo_bin("librarian")
+        .unwrap()
         .args(["status", "--config", "/no/such/config.toml"])
         .assert()
         .failure()
@@ -111,8 +127,10 @@ fn malformed_config_yields_parse_error() {
     let cfg = dir.path().join("bad.toml");
     std::fs::write(&cfg, "not = a [valid").unwrap();
 
-    Command::cargo_bin("librarian").unwrap()
-        .args(["status", "--config"]).arg(&cfg)
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["status", "--config"])
+        .arg(&cfg)
         .assert()
         .failure()
         .stderr(contains("config parse"));
@@ -154,16 +172,30 @@ extractor = "text"
     std::fs::write(&cfg_path, body).unwrap();
 
     // Probe Qdrant; skip if absent.
-    let probe = Command::cargo_bin("librarian").unwrap()
-        .arg("status").arg("--config").arg(&cfg_path).assert();
-    if !probe.get_output().status.success() { eprintln!("skip: no Qdrant"); return; }
+    let probe = Command::cargo_bin("librarian")
+        .unwrap()
+        .arg("status")
+        .arg("--config")
+        .arg(&cfg_path)
+        .assert();
+    if !probe.get_output().status.success() {
+        eprintln!("skip: no Qdrant");
+        return;
+    }
 
     // Ingest a tiny fixture so the snapshot has content.
     let fixture = fixture_path();
     let _ = StdCmd::new(env!("CARGO_BIN_EXE_librarian"))
-        .args(["ingest", "--config"]).arg(&cfg_path).arg(&fixture).output();
+        .args(["ingest", "--config"])
+        .arg(&cfg_path)
+        .arg(&fixture)
+        .output();
 
-    Command::cargo_bin("librarian").unwrap()
-        .args(["snapshot", "--config"]).arg(&cfg_path)
-        .assert().success().stdout(contains("snapshot\tid="));
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["snapshot", "--config"])
+        .arg(&cfg_path)
+        .assert()
+        .success()
+        .stdout(contains("snapshot\tid="));
 }

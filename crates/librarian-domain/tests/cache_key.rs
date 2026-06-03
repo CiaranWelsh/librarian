@@ -64,5 +64,7 @@ fn output_is_64_char_lowercase_hex() {
     let (s, n, v, c) = fixture();
     let key = derive(&s, n, &v, &c).0;
     assert_eq!(key.len(), 64);
-    assert!(key.chars().all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase()));
+    assert!(key
+        .chars()
+        .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase()));
 }

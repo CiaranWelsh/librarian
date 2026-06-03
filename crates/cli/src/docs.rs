@@ -6,7 +6,11 @@ use librarian_runner::Outcome;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
-pub fn collect_docs(input: &Path, content_type: &str, extractor: &str) -> Result<Vec<Document>, String> {
+pub fn collect_docs(
+    input: &Path,
+    content_type: &str,
+    extractor: &str,
+) -> Result<Vec<Document>, String> {
     let ct = match content_type {
         "book" => ContentType::Book,
         "paper" => ContentType::Paper,
@@ -15,17 +19,26 @@ pub fn collect_docs(input: &Path, content_type: &str, extractor: &str) -> Result
     };
     let code_mode = extractor == "code";
     let ebook_mode = extractor == "ebook";
+    let html_mode = extractor == "html";
     let mut docs = Vec::new();
     if input.is_file() {
         docs.push(make_doc(input, ct)?);
     } else {
-        for entry in walkdir::WalkDir::new(input).into_iter().filter_map(Result::ok) {
-            if !entry.file_type().is_file() { continue; }
+        for entry in walkdir::WalkDir::new(input)
+            .into_iter()
+            .filter_map(Result::ok)
+        {
+            if !entry.file_type().is_file() {
+                continue;
+            }
             let path = entry.path();
             if code_mode && !should_include(path, DEFAULT_SKIP_DIRS, DEFAULT_INCLUDE_EXTS) {
                 continue;
             }
             if ebook_mode && !has_ebook_ext(path) {
+                continue;
+            }
+            if html_mode && !has_html_ext(path) {
                 continue;
             }
             docs.push(make_doc(path, ct)?);
@@ -36,8 +49,21 @@ pub fn collect_docs(input: &Path, content_type: &str, extractor: &str) -> Result
 
 fn has_ebook_ext(path: &Path) -> bool {
     matches!(
-        path.extension().and_then(|s| s.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
         Some("epub" | "mobi" | "azw3" | "azw")
+    )
+}
+
+fn has_html_ext(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("html" | "htm")
     )
 }
 
@@ -57,11 +83,24 @@ fn make_doc(path: &Path, ct: ContentType) -> Result<Document, String> {
 pub fn print_outcomes(outcomes: &[Outcome]) {
     for o in outcomes {
         match o {
-            Outcome::Success { source_id, chunks_indexed } => {
+            Outcome::Success {
+                source_id,
+                chunks_indexed,
+            } => {
                 println!("ok\tsource={}\tchunks={}", source_id.0, chunks_indexed);
             }
-            Outcome::Failed { source_id, stage, error } => {
-                println!("fail\tsource={}\tstage={}\terror={}", source_id.0, stage, error);
+            Outcome::Skipped { source_id, reason } => {
+                println!("skip\tsource={}\treason={}", source_id.0, reason);
+            }
+            Outcome::Failed {
+                source_id,
+                stage,
+                error,
+            } => {
+                println!(
+                    "fail\tsource={}\tstage={}\terror={}",
+                    source_id.0, stage, error
+                );
             }
         }
     }

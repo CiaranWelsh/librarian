@@ -13,6 +13,8 @@ pub struct Config {
     pub ingest: IngestConfig,
     #[serde(default)]
     pub snapshot: SnapshotConfig,
+    #[serde(default)]
+    pub quality: QualityConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,7 +36,9 @@ pub struct SnapshotConfig {
     pub retention: usize,
 }
 
-fn default_retention() -> usize { 5 }
+fn default_retention() -> usize {
+    5
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -59,11 +63,64 @@ pub struct IngestConfig {
     #[serde(default = "default_content_type")]
     pub content_type: String, // "book" | "paper" | "code"
     #[serde(default = "default_extractor")]
-    pub extractor: String,    // "text" | "pdf"
+    pub extractor: String, // "text" | "pdf"
 }
 
-fn default_content_type() -> String { "book".into() }
-fn default_extractor() -> String { "text".into() }
+fn default_content_type() -> String {
+    "book".into()
+}
+fn default_extractor() -> String {
+    "text".into()
+}
+
+/// Ingest-quality config (ADR-0006). Maps to `librarian_domain::QualityConfig`.
+#[derive(Debug, Deserialize, Default)]
+pub struct QualityConfig {
+    #[serde(default)]
+    pub sections: SectionsConfig,
+    #[serde(default)]
+    pub garble: GarbleConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SectionsConfig {
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub keep: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GarbleConfig {
+    #[serde(default = "default_flag_above")]
+    pub flag_above: f64,
+}
+
+impl Default for GarbleConfig {
+    fn default() -> Self {
+        Self {
+            flag_above: default_flag_above(),
+        }
+    }
+}
+
+fn default_flag_above() -> f64 {
+    1.0
+}
+
+impl QualityConfig {
+    pub fn to_domain(&self) -> librarian_domain::QualityConfig {
+        librarian_domain::QualityConfig {
+            sections: librarian_domain::SectionConfig {
+                exclude: self.sections.exclude.clone(),
+                keep: self.sections.keep.clone(),
+            },
+            garble: librarian_domain::GarbleConfig {
+                flag_above: self.garble.flag_above,
+            },
+        }
+    }
+}
 
 impl Config {
     pub fn load(path: &std::path::Path) -> Result<Self, ConfigError> {

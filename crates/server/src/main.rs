@@ -18,24 +18,34 @@ use crate::server::Server;
 #[derive(Parser, Debug)]
 #[command(name = "librarian-collection", about = "Per-collection MCP server")]
 struct Cli {
-    #[arg(long)] config: PathBuf,
+    #[arg(long)]
+    config: PathBuf,
     /// Allocated by the supervisor (slice 015). Currently unused — server runs over stdio.
-    #[arg(long)] port: Option<u16>,
+    #[arg(long)]
+    port: Option<u16>,
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let server = match Server::open(&cli.config) {
         Ok(s) => s,
-        Err(e) => { eprintln!("error: {e}"); return ExitCode::FAILURE; }
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
     };
 
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     for line in stdin.lock().lines() {
-        let line = match line { Ok(l) => l, Err(_) => break };
-        if line.trim().is_empty() { continue; }
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
         let msg: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {

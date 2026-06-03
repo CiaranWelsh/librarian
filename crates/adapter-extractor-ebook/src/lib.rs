@@ -1,10 +1,8 @@
 //! EPUB / MOBI extractor — pandoc → cleaner → markdown.
 
-mod cleaner;
 mod error;
 mod extractor;
 
-pub use cleaner::clean;
 pub use error::EbookExtractError;
 pub use extractor::EbookExtractor;
 

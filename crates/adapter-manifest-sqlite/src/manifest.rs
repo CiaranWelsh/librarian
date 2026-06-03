@@ -38,8 +38,12 @@ impl SqliteManifest {
             std::fs::create_dir_all(parent).map_err(SqliteManifestError::Io)?;
         }
         let conn = Connection::open(&path).map_err(SqliteManifestError::Db)?;
-        conn.execute_batch(SCHEMA).map_err(SqliteManifestError::Db)?;
-        Ok(Self { conn: Mutex::new(conn), path })
+        conn.execute_batch(SCHEMA)
+            .map_err(SqliteManifestError::Db)?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+            path,
+        })
     }
 
     pub fn schema_version(&self) -> Result<i64, SqliteManifestError> {

@@ -12,7 +12,12 @@ use tempfile::TempDir;
 /// live in `target/debug/deps/<test-binary>`; siblings are at `target/debug/`.
 fn child_bin() -> PathBuf {
     let exe = std::env::current_exe().expect("current_exe");
-    let target_debug = exe.parent().expect("deps").parent().expect("debug").to_path_buf();
+    let target_debug = exe
+        .parent()
+        .expect("deps")
+        .parent()
+        .expect("debug")
+        .to_path_buf();
     target_debug.join("librarian-collection")
 }
 
@@ -21,7 +26,10 @@ fn qdrant_url() -> String {
 }
 
 fn unique_name(label: &str) -> String {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     format!("fleet-{label}-{nanos}")
 }
 
@@ -51,7 +59,7 @@ kind = "stub"
 fn run_librarian(reg: &Path) -> Command {
     let mut c = Command::cargo_bin("librarian").unwrap();
     c.env("LIBRARIAN_FLEET_DB", reg)
-     .env("LIBRARIAN_COLLECTION_BIN", child_bin());
+        .env("LIBRARIAN_COLLECTION_BIN", child_bin());
     c
 }
 
@@ -73,7 +81,10 @@ fn empty_fleet_prints_marker() {
 
 #[test]
 fn start_two_collections_listed_with_distinct_ports() {
-    if !qdrant_reachable() { eprintln!("skip: no Qdrant"); return; }
+    if !qdrant_reachable() {
+        eprintln!("skip: no Qdrant");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let reg = dir.path().join("fleet.sqlite");
 
@@ -82,8 +93,16 @@ fn start_two_collections_listed_with_distinct_ports() {
     std::fs::create_dir_all(cfg_a.parent().unwrap()).ok();
     std::fs::create_dir_all(cfg_b.parent().unwrap()).ok();
 
-    run_librarian(&reg).args(["start", "coll-a", "--config"]).arg(&cfg_a).assert().success();
-    run_librarian(&reg).args(["start", "coll-b", "--config"]).arg(&cfg_b).assert().success();
+    run_librarian(&reg)
+        .args(["start", "coll-a", "--config"])
+        .arg(&cfg_a)
+        .assert()
+        .success();
+    run_librarian(&reg)
+        .args(["start", "coll-b", "--config"])
+        .arg(&cfg_b)
+        .assert()
+        .success();
 
     let out = run_librarian(&reg).arg("status").assert().success();
     let stdout = String::from_utf8_lossy(&out.get_output().stdout).to_string();
@@ -95,72 +114,132 @@ fn start_two_collections_listed_with_distinct_ports() {
     assert_ne!(port_a, port_b);
 
     // Cleanup
-    run_librarian(&reg).args(["stop", "coll-a"]).assert().success();
-    run_librarian(&reg).args(["stop", "coll-b"]).assert().success();
+    run_librarian(&reg)
+        .args(["stop", "coll-a"])
+        .assert()
+        .success();
+    run_librarian(&reg)
+        .args(["stop", "coll-b"])
+        .assert()
+        .success();
 }
 
 #[test]
 fn stop_marks_collection_stopped() {
-    if !qdrant_reachable() { eprintln!("skip: no Qdrant"); return; }
+    if !qdrant_reachable() {
+        eprintln!("skip: no Qdrant");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let reg = dir.path().join("fleet.sqlite");
     let cfg = write_collection_config(dir.path(), &unique_name("stop"));
 
-    run_librarian(&reg).args(["start", "c1", "--config"]).arg(&cfg).assert().success()
+    run_librarian(&reg)
+        .args(["start", "c1", "--config"])
+        .arg(&cfg)
+        .assert()
+        .success()
         .stdout(contains("started"));
-    run_librarian(&reg).arg("status").assert().success().stdout(contains("status=running"));
+    run_librarian(&reg)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(contains("status=running"));
 
-    run_librarian(&reg).args(["stop", "c1"]).assert().success().stdout(contains("stopped"));
-    run_librarian(&reg).arg("status").assert().success().stdout(contains("status=stopped"));
+    run_librarian(&reg)
+        .args(["stop", "c1"])
+        .assert()
+        .success()
+        .stdout(contains("stopped"));
+    run_librarian(&reg)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(contains("status=stopped"));
 }
 
 #[test]
 fn idempotent_start_and_stop() {
-    if !qdrant_reachable() { eprintln!("skip: no Qdrant"); return; }
+    if !qdrant_reachable() {
+        eprintln!("skip: no Qdrant");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let reg = dir.path().join("fleet.sqlite");
     let cfg = write_collection_config(dir.path(), &unique_name("idem"));
 
-    run_librarian(&reg).args(["start", "c1", "--config"]).arg(&cfg).assert().success();
+    run_librarian(&reg)
+        .args(["start", "c1", "--config"])
+        .arg(&cfg)
+        .assert()
+        .success();
     // Second start: no-op.
-    run_librarian(&reg).args(["start", "c1", "--config"]).arg(&cfg).assert().success()
+    run_librarian(&reg)
+        .args(["start", "c1", "--config"])
+        .arg(&cfg)
+        .assert()
+        .success()
         .stdout(contains("already running"));
     run_librarian(&reg).args(["stop", "c1"]).assert().success();
     // Second stop: no-op.
-    run_librarian(&reg).args(["stop", "c1"]).assert().success().stdout(contains("already stopped"));
+    run_librarian(&reg)
+        .args(["stop", "c1"])
+        .assert()
+        .success()
+        .stdout(contains("already stopped"));
 }
 
 #[test]
 fn external_kill_is_reflected_on_next_status() {
-    if !qdrant_reachable() { eprintln!("skip: no Qdrant"); return; }
+    if !qdrant_reachable() {
+        eprintln!("skip: no Qdrant");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let reg = dir.path().join("fleet.sqlite");
     let cfg = write_collection_config(dir.path(), &unique_name("crash"));
 
-    let started = run_librarian(&reg).args(["start", "c1", "--config"]).arg(&cfg).output().unwrap();
+    let started = run_librarian(&reg)
+        .args(["start", "c1", "--config"])
+        .arg(&cfg)
+        .output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&started.stdout).to_string();
     let pid: i32 = stdout
         .lines()
         .filter_map(|l| l.split('\t').find_map(|p| p.strip_prefix("pid=")))
-        .next().expect("pid line").parse().expect("pid int");
+        .next()
+        .expect("pid line")
+        .parse()
+        .expect("pid int");
 
     // Externally kill the child.
-    unsafe { libc::kill(pid, libc::SIGKILL); }
+    unsafe {
+        libc::kill(pid, libc::SIGKILL);
+    }
     // Give the OS a moment to reap.
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    run_librarian(&reg).arg("status").assert().success().stdout(contains("status=stopped"));
+    run_librarian(&reg)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(contains("status=stopped"));
 }
 
 #[test]
 fn stop_of_unknown_name_is_a_noop() {
     let dir = TempDir::new().unwrap();
     let reg = dir.path().join("fleet.sqlite");
-    run_librarian(&reg).args(["stop", "nope"]).assert().success()
+    run_librarian(&reg)
+        .args(["stop", "nope"])
+        .assert()
+        .success()
         .stdout(contains("not registered"));
 }
 
 fn extract_port(stdout: &str, name: &str) -> Option<u16> {
     let line = stdout.lines().find(|l| l.starts_with(name))?;
-    line.split('\t').find_map(|p| p.strip_prefix("port=")?.parse().ok())
+    line.split('\t')
+        .find_map(|p| p.strip_prefix("port=")?.parse().ok())
 }

@@ -6,12 +6,22 @@ use std::path::Path;
 
 use crate::config::Config;
 
-fn snapshot_orchestrator(cfg: &Config) -> Result<SnapshotOrchestrator<QdrantNasSnapshotter, SqliteManifest>, String> {
-    let nas = cfg.paths.snapshots.clone().ok_or_else(|| "config: paths.snapshots required for snapshot/restore".to_string())?;
+fn snapshot_orchestrator(
+    cfg: &Config,
+) -> Result<SnapshotOrchestrator<QdrantNasSnapshotter, SqliteManifest>, String> {
+    let nas = cfg
+        .paths
+        .snapshots
+        .clone()
+        .ok_or_else(|| "config: paths.snapshots required for snapshot/restore".to_string())?;
     let snapshotter = QdrantNasSnapshotter::new(&cfg.qdrant.url, &cfg.collection, nas)
         .map_err(|e| e.to_string())?;
     let manifest = SqliteManifest::open(&cfg.paths.manifest).map_err(|e| e.to_string())?;
-    Ok(SnapshotOrchestrator { snapshotter, manifest, retention: cfg.snapshot.retention })
+    Ok(SnapshotOrchestrator {
+        snapshotter,
+        manifest,
+        retention: cfg.snapshot.retention,
+    })
 }
 
 pub fn cmd_snapshot(config_path: &Path) -> Result<(), String> {

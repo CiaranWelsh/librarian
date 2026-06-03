@@ -131,9 +131,13 @@ deliberate, modular, reusable replacement.
 
 ## 4. Quality Attributes (drivers)
 
-Three drivers shape the architecture. Testability and modularity are universal
-software-engineering concerns and are not listed as drivers; performance,
-observability, and deployability are tracked as concerns in §4.4.
+Three drivers shaped the original draft (modifiability, fault tolerance,
+operability). Two further drivers were recorded later as dated addenda:
+**concurrency** (QA-Q1) and **extraction quality** (QA-EQ1/EQ2) — the latter a primary
+*retrieval-quality* driver: keeping low-value and broken content out of the index, on
+which downstream retrieval depends. Testability and
+modularity are universal software-engineering concerns and are not listed as
+drivers; performance, observability, and deployability are tracked as concerns in §4.4.
 
 Each driver is captured as one or more six-part scenarios per SAIP §3.3:
 *source · stimulus · environment · artifact · response · response measure*.
@@ -273,3 +277,120 @@ After step 3, v1 is done.
 
 1. Is the **manifest curation step** (turning a directory of files into the input manifest the framework consumes) in scope? Currently treated as the user's responsibility (out of scope), but a thin "scan a directory and emit a starter manifest" tool is small and might belong here.
 2. Is **F-7.3 (snapshot/restore)** core-framework or operational sidecar? Currently in scope as core; could be a separate `librarian-ops` package.
+
+---
+
+## Addendum — Query service & concurrency (2026-06-03)
+
+Promotes the "REST/HTTP frontend" of §2 (was "designed-for, not implemented") to the
+planned production query interface, and records the one quality attribute driving it.
+Functional query requirements are unchanged (search / list_documents / get_extract over
+a named collection); this addendum concerns *how* queries are served.
+
+### Interface evolution (PoC → production)
+- **F-Q.1** The query path SHALL be served by a single **stateless query daemon** on the
+  host, fronting all collections (collection is a request parameter).
+- **F-Q.2** The **CLI** and the **MCP server** SHALL be *thin clients* over that daemon —
+  the daemon's API is the one "proper interface"; MCP is a thin adapter, not the home of
+  query logic. This supersedes the prototype `books/mcp-server` (per §1) and the
+  MCP-only, per-collection serving model.
+
+### Quality attribute
+- **QA-Q1 (concurrency).** The query daemon SHALL serve concurrent queries from up to
+  **~tens** of users over the network with acceptable latency and no serialisation/
+  contention failures. Target is order-10s of concurrent users, **not hundreds** — no
+  horizontal scale-out required. Query handling SHALL be **stateless** (no per-connection
+  or session state) so concurrency is a worker-pool concern only. Known contention point
+  at this scale is the shared embedder (one API key → rate limits), not the daemon.
+
+### Acknowledged (unchanged from §2)
+- Authentication / access control: out of scope; queries are anonymous, access governed
+  by network controls. The stateless API SHALL leave room to add auth later but SHALL NOT
+  implement it.
+
+---
+
+## Addendum — Extraction quality as a quality attribute (2026-06-03)
+
+Records **extraction quality** as a first-class, system-specific quality attribute:
+retrieval is only as good as the text indexed, so keeping low-value and broken content out
+of the index is an architectural concern, not a feature. **This addendum was rewritten on
+the basis of an exploratory-experiment study** over the real corpus (`experiments/quality/`
+on turbo — 2,439 book sections plus the librarian caches of both collections); the earlier,
+more ambitious version (an autonomous correctness gate + escalation ladder + agentic-LLM
+rerun rung) was **falsified by that evidence** and removed — see *Considered and rejected*
+below. The architectural measures are recorded separately in **ADR-0006 (ingest-quality)**.
+
+**What the evidence says (scope-setting facts).** Across the real corpus: low-value
+boilerplate sections are **13.7% of book documents (7.9% by volume)** and **0% of papers**
+(papers are not chaptered); true garble is rare — mojibake **1.0%** (software) / **3.5%**
+(physics, sparse), gross letter-spacing **≤0.2%**; extraction *crashes* are **≤0.5%** and
+already handled as `Failed` (F-1.6). Critically, **omission** (silently-dropped
+equations/figures/pages) and **in-formula corruption** (scrambled but well-formed math) are
+**provably invisible** to any signal computed from the extracted text alone. So the QA
+targets the two things that are both prevalent and cheaply detectable — low-value content
+and *gross* garble markers — and explicitly does **not** promise correctness/completeness.
+
+**Why record it as a QA (and which one).** Standard QA lists are deliberately
+incomplete — "no list will ever be complete … you will inevitably be called upon to
+design a system to meet a stakeholder concern not foreseen by any list-maker," and "QA
+names, by themselves, are largely useless … scenarios provide the best way … to specify
+precisely what we mean" (SAIP §14.2). So we do not argue taxonomy; we specify scenarios
+with measurable response measures. Its nearest standard kin is ISO 25010 *functional
+correctness* / *functional suitability* and SWEBOK's *correctness* "‑ness" (SAIP §14.2;
+SWEBOK §6.2). For AI/RAG systems specifically, recent work catalogues *accuracy* as a
+first-class QA in this same six-part form (Lu 2026, *AgentArcEval* §5) — precedent for
+treating extraction quality as a primary driver of a retrieval substrate.
+
+**Priority.** Per the utility-tree method drivers rank by *business importance × technical
+risk* and the architect attacks the (High, High) cell first (DSAP Ch 2; SAIP §21). This is
+a High-business-importance driver — it is the operator's main retrieval-quality concern —
+of now-**bounded** technical risk after the study scoped what is achievable.
+
+Captured as six-part scenarios per SAIP §3.3, matching §4.
+
+### QA-EQ1 · Low-value sections are kept out of the index
+
+| | |
+|---|---|
+| Source | Source corpus (a book whose chapters include front/back-matter) |
+| Stimulus | A book is ingested containing low-value sections — index, table of contents, cover, copyright, title/half-title, acknowledgements, back-cover, bibliography/references |
+| Environment | Normal ingestion (F-1.5); each section's type is known from the input manifest / chapter split |
+| Artifact | The ingest section-filter + manifest |
+| Response | The framework excludes the configured low-value section types from indexing while retaining content sections and **useful reference sections (glossary, notation) by default**; each exclusion and its reason are recorded in the manifest |
+| Response measure | On the labelled book corpus, ≥ *S_drop* of front/back-matter sections are excluded and **zero** content sections (incl. glossary/notation) are excluded. Un-chaptered content (papers) is unaffected. The manifest answers "why was section X excluded" in one query. *(S_drop calibrated against section-type labels; ~13.7% of book documents / 7.9% of volume are candidates.)* |
+
+### QA-EQ2 · Gross extraction artifacts are flagged for review (advisory)
+
+| | |
+|---|---|
+| Source | The ingest pipeline |
+| Stimulus | A document is extracted containing definitive garble markers — U+FFFD replacement characters, or letter-spacing above a threshold |
+| Environment | Normal ingestion; a per-document garble signal is computed after extraction |
+| Artifact | The garble-flag signal + manifest |
+| Response | The framework persists a per-document garble signal and **flags** documents above a configurable threshold for operator review. The flag is **advisory**: it does **not** by itself exclude a document from indexing |
+| Response measure | Every document carries a persisted garble signal. Every document containing U+FFFD is flagged (a definitive marker). On the labelled good corpus — **including math- and symbol-dense documents** — the flag's false-positive rate is ≤ *F_fp*; correctly-extracted math is not flagged (the signal keys on definitive garble markers, not symbol density). No document is auto-excluded by this signal. |
+
+### Functional requirements (extraction quality)
+
+The *how* — ports, types, the exact signal — is the design decision in ADR-0006.
+
+| ID | Requirement |
+|---|---|
+| **F-EQ.1** | For chaptered content (e.g. `book`), the framework SHALL exclude configured **low-value section types** from indexing, identified by section type and **configurable per type**, while retaining content sections and — by default — useful reference sections (glossary, notation). Each exclusion and its reason SHALL be recorded in the manifest. For un-chaptered content (e.g. `paper`) this SHALL be a no-op. |
+| **F-EQ.2** | The framework SHALL compute and **persist a per-document garble signal** (at minimum: presence of U+FFFD replacement characters and letter-spacing density). Documents whose signal exceeds a configurable threshold SHALL be **flagged for operator review**. The signal SHALL be **advisory** — it SHALL NOT by itself exclude a document from indexing — and SHALL NOT flag correctly-extracted symbol/math-dense content (it keys on definitive garble markers, not symbol density). |
+
+**Considered and rejected on evidence (do not re-introduce without new evidence).**
+- **Correctness / completeness scoring.** Omission and in-formula corruption are undetectable from extracted output alone (experiments E4, E10); no requirement may promise the indexed math is complete or correct.
+- **Autonomous quality gate (whole-document rejection).** True garble is rare and mostly subtle; a false-positive-safe gate would reject almost nothing real while risking the loss of good documents. Use flag-for-review (F-EQ.2), not auto-reject.
+- **Escalation ladder / agentic-LLM re-extraction rung.** Unjustified: the dominant problem (low-value sections) needs no re-extraction, and an LLM extractor is non-deterministic — it breaks the content-addressed cache (F-5.1) and provenance (F-M.6).
+- **Automated content-cleaning passes** (de-hyphenation, letterspace-collapse, header/footer stripping). Low yield (de-hyphenation relevant to ~2.3% of docs) and corruption-prone (collapse mangles code and legitimate single-letter sequences). Out of scope; revisit only if evidence changes.
+
+**Already handled elsewhere.** Extraction *crashes* (no output) are caught by the
+per-document fault path and recorded `Failed` (F-1.3, F-1.6); surfacing them is an
+operability concern (`status`), not a new mechanism here.
+
+**Architectural measures (forward reference).** The tactics that satisfy QA-EQ1/EQ2 and
+F-EQ.1–2 — a section-type filter plus an advisory per-document garble signal recorded in
+the manifest — are a design *decision*, recorded separately in **ADR-0006
+(ingest-quality)**. This addendum records the *requirements*; the ADR records the *decision*.

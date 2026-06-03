@@ -7,7 +7,7 @@ use adapter_embedder_fallback::FallbackEmbedder;
 use adapter_indexer_mem::MemIndexer;
 use adapter_manifest_mem::MemManifest;
 use librarian_domain::{
-    AdapterIdentity, ConfigHash, ContentType, Document, EmbedderError, Embedder, ExtractedText,
+    AdapterIdentity, ConfigHash, ContentType, Document, Embedder, EmbedderError, ExtractedText,
     Extractor, ManifestStatus, ManifestStore, SourceHash, SourceId, SpanKind, StageVersion,
     TextSpan, Vector,
 };
@@ -16,18 +16,30 @@ use std::cell::Cell;
 
 struct OkExt;
 impl AdapterIdentity for OkExt {
-    fn name(&self) -> &str { "ok" }
-    fn version(&self) -> StageVersion { StageVersion("v".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    fn name(&self) -> &str {
+        "ok"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("c".into())
+    }
 }
-#[derive(Debug, thiserror::Error)] #[error("never")] struct EE;
+#[derive(Debug, thiserror::Error)]
+#[error("never")]
+struct EE;
 impl Extractor for OkExt {
     type Error = EE;
     fn extract(&self, doc: &Document) -> Result<ExtractedText, Self::Error> {
-        Ok(ExtractedText { spans: vec![TextSpan {
-            kind: SpanKind::Paragraph, text: format!("body-{}", doc.source_id.0),
-            page: None, byte_range: 0..1,
-        }]})
+        Ok(ExtractedText {
+            spans: vec![TextSpan {
+                kind: SpanKind::Paragraph,
+                text: format!("body-{}", doc.source_id.0),
+                page: None,
+                byte_range: 0..1,
+            }],
+        })
     }
 }
 
@@ -37,22 +49,38 @@ struct StubEmbedderOnce {
 }
 impl StubEmbedderOnce {
     fn ok_unit(n: &'static str) -> Self {
-        Self { name: n, next: Cell::new(Some(Ok(vec![vec![1.0; 4]]))) }
+        Self {
+            name: n,
+            next: Cell::new(Some(Ok(vec![vec![1.0; 4]]))),
+        }
     }
     fn err(n: &'static str, e: EmbedderError) -> Self {
-        Self { name: n, next: Cell::new(Some(Err(e))) }
+        Self {
+            name: n,
+            next: Cell::new(Some(Err(e))),
+        }
     }
 }
 impl AdapterIdentity for StubEmbedderOnce {
-    fn name(&self) -> &str { self.name }
-    fn version(&self) -> StageVersion { StageVersion("v".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    fn name(&self) -> &str {
+        self.name
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("c".into())
+    }
 }
 impl Embedder for StubEmbedderOnce {
     fn embed(&self, _: &[&str]) -> Result<Vec<Vector>, EmbedderError> {
-        self.next.replace(None).expect("stub configured for one call")
+        self.next
+            .replace(None)
+            .expect("stub configured for one call")
     }
-    fn dimension(&self) -> usize { 4 }
+    fn dimension(&self) -> usize {
+        4
+    }
 }
 
 fn doc(id: &str) -> Document {
@@ -73,17 +101,27 @@ fn manifest_records_recovered_via_fallback_when_primary_recoverable() {
 
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: OkExt, chunker: BlankLineChunker::new(),
-            embedder: combined, indexer: MemIndexer::new(),
+            extractor: OkExt,
+            chunker: BlankLineChunker::new(),
+            embedder: combined,
+            indexer: MemIndexer::new(),
         },
-        manifest: MemManifest::new(), cache: MemCache::new(),
+        manifest: MemManifest::new(),
+        cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d0")]);
 
-    let recovered = runner.manifest.list_by_status(ManifestStatus::RecoveredViaFallback).unwrap();
-    assert_eq!(recovered, vec![(SourceId("d0".into()), "embed".into())],
-               "manifest reflects recovery");
+    let recovered = runner
+        .manifest
+        .list_by_status(ManifestStatus::RecoveredViaFallback)
+        .unwrap();
+    assert_eq!(
+        recovered,
+        vec![(SourceId("d0".into()), "embed".into())],
+        "manifest reflects recovery"
+    );
 
     // Vector still landed in the indexer.
     assert_eq!(runner.pipeline.indexer.count(), 1);
@@ -103,22 +141,44 @@ fn manifest_records_failed_with_both_errors_when_fallback_also_terminal() {
 
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: OkExt, chunker: BlankLineChunker::new(),
-            embedder: combined, indexer: MemIndexer::new(),
+            extractor: OkExt,
+            chunker: BlankLineChunker::new(),
+            embedder: combined,
+            indexer: MemIndexer::new(),
         },
-        manifest: MemManifest::new(), cache: MemCache::new(),
+        manifest: MemManifest::new(),
+        cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d0")]);
-    assert_eq!(runner.pipeline.indexer.count(), 0, "no chunks indexed on terminal failure");
+    assert_eq!(
+        runner.pipeline.indexer.count(),
+        0,
+        "no chunks indexed on terminal failure"
+    );
 
-    let failed = runner.manifest.list_by_status(ManifestStatus::Failed).unwrap();
+    let failed = runner
+        .manifest
+        .list_by_status(ManifestStatus::Failed)
+        .unwrap();
     assert_eq!(failed, vec![(SourceId("d0".into()), "embed".into())]);
 
-    let row = runner.manifest.rows().into_iter().find(|r| r.stage == "embed").unwrap();
+    let row = runner
+        .manifest
+        .rows()
+        .into_iter()
+        .find(|r| r.stage == "embed")
+        .unwrap();
     let err = row.error.expect("error message");
-    assert!(err.contains("rate-limit"), "primary message preserved: {err}");
-    assert!(err.contains("auth fail"), "fallback message preserved: {err}");
+    assert!(
+        err.contains("rate-limit"),
+        "primary message preserved: {err}"
+    );
+    assert!(
+        err.contains("auth fail"),
+        "fallback message preserved: {err}"
+    );
 }
 
 #[test]
@@ -129,18 +189,33 @@ fn primary_terminal_skips_fallback_and_records_simple_failed() {
 
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: OkExt, chunker: BlankLineChunker::new(),
-            embedder: combined, indexer: MemIndexer::new(),
+            extractor: OkExt,
+            chunker: BlankLineChunker::new(),
+            embedder: combined,
+            indexer: MemIndexer::new(),
         },
-        manifest: MemManifest::new(), cache: MemCache::new(),
+        manifest: MemManifest::new(),
+        cache: MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     runner.ingest_batch(&[doc("d0")]);
 
-    let failed = runner.manifest.list_by_status(ManifestStatus::Failed).unwrap();
+    let failed = runner
+        .manifest
+        .list_by_status(ManifestStatus::Failed)
+        .unwrap();
     assert_eq!(failed, vec![(SourceId("d0".into()), "embed".into())]);
-    let row = runner.manifest.rows().into_iter().find(|r| r.stage == "embed").unwrap();
+    let row = runner
+        .manifest
+        .rows()
+        .into_iter()
+        .find(|r| r.stage == "embed")
+        .unwrap();
     let err = row.error.expect("error");
     assert!(err.contains("invariant"));
-    assert!(!err.contains("primary:"), "no fallback occurred so no combined message");
+    assert!(
+        !err.contains("primary:"),
+        "no fallback occurred so no combined message"
+    );
 }

@@ -17,14 +17,24 @@ pub fn cmd_status_collection(config_path: &Path) -> Result<(), String> {
         EmbedderConfig::Openai { dimensions, .. } => *dimensions as u64,
         EmbedderConfig::Voyage { dimensions, .. } => *dimensions as u64,
     };
-    let indexer = QdrantIndexer::open(&cfg.qdrant.url, &cfg.collection, dim).map_err(|e| e.to_string())?;
+    let indexer =
+        QdrantIndexer::open(&cfg.qdrant.url, &cfg.collection, dim).map_err(|e| e.to_string())?;
     let count = indexer.count().map_err(|e| e.to_string())?;
     println!("collection: {}", cfg.collection);
     println!("points: {count}");
     let manifest = SqliteManifest::open(&cfg.paths.manifest).map_err(|e| e.to_string())?;
-    let succ = manifest.list_by_status(ManifestStatus::Success).map_err(|e| e.to_string())?.len();
-    let cached = manifest.list_by_status(ManifestStatus::Cached).map_err(|e| e.to_string())?.len();
-    let failed = manifest.list_by_status(ManifestStatus::Failed).map_err(|e| e.to_string())?.len();
+    let succ = manifest
+        .list_by_status(ManifestStatus::Success)
+        .map_err(|e| e.to_string())?
+        .len();
+    let cached = manifest
+        .list_by_status(ManifestStatus::Cached)
+        .map_err(|e| e.to_string())?
+        .len();
+    let failed = manifest
+        .list_by_status(ManifestStatus::Failed)
+        .map_err(|e| e.to_string())?
+        .len();
     println!("manifest: success={succ} cached={cached} failed={failed}");
     Ok(())
 }
@@ -39,7 +49,10 @@ pub fn cmd_fleet_status() -> Result<(), String> {
     for (r, uptime) in rows {
         println!(
             "{}\tport={}\tstatus={}\tuptime={}s\tpid={}",
-            r.name, r.port, r.status, uptime,
+            r.name,
+            r.port,
+            r.status,
+            uptime,
             r.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".into()),
         );
     }

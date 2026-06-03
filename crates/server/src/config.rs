@@ -16,17 +16,31 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct QdrantCfg { pub url: String }
+pub struct QdrantCfg {
+    pub url: String,
+}
 
 #[derive(Debug, Deserialize)]
-pub struct Paths { pub manifest: PathBuf }
+pub struct Paths {
+    pub manifest: PathBuf,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EmbedderCfg {
     Stub,
-    Openai { model: String, dimensions: usize, #[serde(default)] batch_size: Option<usize> },
-    Voyage { model: String, dimensions: usize, #[serde(default)] batch_size: Option<usize> },
+    Openai {
+        model: String,
+        dimensions: usize,
+        #[serde(default)]
+        batch_size: Option<usize>,
+    },
+    Voyage {
+        model: String,
+        dimensions: usize,
+        #[serde(default)]
+        batch_size: Option<usize>,
+    },
 }
 
 /// Dimension lookup used by composition root before constructing the concrete embedder.
@@ -40,19 +54,40 @@ pub fn embedder_dim(cfg: &EmbedderCfg) -> u64 {
 
 pub fn embed_query(cfg: &EmbedderCfg, q: &str) -> Result<Vec<f32>, String> {
     match cfg {
-        EmbedderCfg::Stub => StubEmbedder::new().embed(&[q]).map(|v| v.into_iter().next().unwrap()).map_err(|e| e.to_string()),
-        EmbedderCfg::Openai { model, dimensions, batch_size } => {
+        EmbedderCfg::Stub => StubEmbedder::new()
+            .embed(&[q])
+            .map(|v| v.into_iter().next().unwrap())
+            .map_err(|e| e.to_string()),
+        EmbedderCfg::Openai {
+            model,
+            dimensions,
+            batch_size,
+        } => {
             let e = OpenAiEmbedder::from_env(OpenAiConfig {
-                model: model.clone(), dimensions: *dimensions,
-                endpoint: None, batch_size: *batch_size, timeout: None,
-            }).map_err(|e| e.to_string())?;
-            e.embed(&[q]).map(|v| v.into_iter().next().unwrap()).map_err(|e| e.to_string())
+                model: model.clone(),
+                dimensions: *dimensions,
+                endpoint: None,
+                batch_size: *batch_size,
+                timeout: None,
+            })
+            .map_err(|e| e.to_string())?;
+            e.embed(&[q])
+                .map(|v| v.into_iter().next().unwrap())
+                .map_err(|e| e.to_string())
         }
-        EmbedderCfg::Voyage { model, dimensions, batch_size } => {
+        EmbedderCfg::Voyage {
+            model,
+            dimensions,
+            batch_size,
+        } => {
             let e = VoyageEmbedder::from_env(VoyageConfig {
-                model: model.clone(), dimensions: *dimensions,
-                endpoint: None, batch_size: *batch_size, timeout: None,
-            }).map_err(|e| e.to_string())?;
+                model: model.clone(),
+                dimensions: *dimensions,
+                endpoint: None,
+                batch_size: *batch_size,
+                timeout: None,
+            })
+            .map_err(|e| e.to_string())?;
             e.embed_query(q).map_err(|e| e.to_string())
         }
     }

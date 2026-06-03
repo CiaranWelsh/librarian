@@ -11,6 +11,7 @@ pub(crate) fn status_str(s: ManifestStatus) -> &'static str {
         ManifestStatus::Failed => "Failed",
         ManifestStatus::RecoveredViaFallback => "RecoveredViaFallback",
         ManifestStatus::Skipped => "Skipped",
+        ManifestStatus::Flagged => "Flagged",
         ManifestStatus::Removed => "Removed",
     }
 }
@@ -23,6 +24,7 @@ pub(crate) fn parse_status(s: &str) -> Option<ManifestStatus> {
         "Failed" => ManifestStatus::Failed,
         "RecoveredViaFallback" => ManifestStatus::RecoveredViaFallback,
         "Skipped" => ManifestStatus::Skipped,
+        "Flagged" => ManifestStatus::Flagged,
         "Removed" => ManifestStatus::Removed,
         _ => return None,
     })

@@ -5,8 +5,8 @@ use adapter_embedder_stub::StubEmbedder;
 use adapter_indexer_mem::MemIndexer;
 use adapter_manifest_mem::MemManifest;
 use librarian_domain::{
-    AdapterIdentity, ConfigHash, ContentType, Document, EmbedderError, Embedder, Extractor,
-    ExtractedText, ManifestStatus, ManifestStore, SourceHash, SourceId, SpanKind, StageVersion,
+    AdapterIdentity, ConfigHash, ContentType, Document, Embedder, EmbedderError, ExtractedText,
+    Extractor, ManifestStatus, ManifestStore, SourceHash, SourceId, SpanKind, StageVersion,
     TextSpan, Vector,
 };
 use librarian_runner::{BatchRunner, Outcome, Pipeline};
@@ -17,20 +17,33 @@ struct PartialFailExtractor {
     fail_on: Vec<&'static str>,
 }
 impl AdapterIdentity for PartialFailExtractor {
-    fn name(&self) -> &str { "partial-fail-extract" }
-    fn version(&self) -> StageVersion { StageVersion("v".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    fn name(&self) -> &str {
+        "partial-fail-extract"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("c".into())
+    }
 }
-#[derive(Debug, thiserror::Error)] #[error("extract bomb on {0}")] struct EErr(String);
+#[derive(Debug, thiserror::Error)]
+#[error("extract bomb on {0}")]
+struct EErr(String);
 impl Extractor for PartialFailExtractor {
     type Error = EErr;
     fn extract(&self, doc: &Document) -> Result<ExtractedText, Self::Error> {
         if self.fail_on.iter().any(|s| *s == doc.source_id.0) {
             return Err(EErr(doc.source_id.0.clone()));
         }
-        Ok(ExtractedText { spans: vec![TextSpan {
-            kind: SpanKind::Paragraph, text: format!("body-{}", doc.source_id.0), page: None, byte_range: 0..1,
-        }]})
+        Ok(ExtractedText {
+            spans: vec![TextSpan {
+                kind: SpanKind::Paragraph,
+                text: format!("body-{}", doc.source_id.0),
+                page: None,
+                byte_range: 0..1,
+            }],
+        })
     }
 }
 
@@ -42,9 +55,15 @@ struct PartialFailEmbedder {
     inner: StubEmbedder,
 }
 impl AdapterIdentity for PartialFailEmbedder {
-    fn name(&self) -> &str { "partial-fail-embed" }
-    fn version(&self) -> StageVersion { StageVersion("v".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("c".into()) }
+    fn name(&self) -> &str {
+        "partial-fail-embed"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("v".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("c".into())
+    }
 }
 impl Embedder for PartialFailEmbedder {
     fn embed(&self, texts: &[&str]) -> Result<Vec<Vector>, EmbedderError> {
@@ -53,7 +72,9 @@ impl Embedder for PartialFailEmbedder {
         }
         self.inner.embed(texts)
     }
-    fn dimension(&self) -> usize { self.inner.dimension() }
+    fn dimension(&self) -> usize {
+        self.inner.dimension()
+    }
 }
 
 fn doc(id: &str) -> Document {
@@ -70,13 +91,16 @@ fn doc(id: &str) -> Document {
 fn extractor_failure_on_one_doc_does_not_halt_batch() {
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: PartialFailExtractor { fail_on: vec!["d2"] },
+            extractor: PartialFailExtractor {
+                fail_on: vec!["d2"],
+            },
             chunker: BlankLineChunker::new(),
             embedder: StubEmbedder::new(),
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
         cache: adapter_cache_mem::MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     let outcomes = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3"), doc("d4")]);
@@ -86,15 +110,39 @@ fn extractor_failure_on_one_doc_does_not_halt_batch() {
     assert_eq!(succ.len(), 4);
     assert_eq!(fail.len(), 1);
 
-    if let Outcome::Failed { source_id, stage, error } = fail[0] {
+    if let Outcome::Failed {
+        source_id,
+        stage,
+        error,
+    } = fail[0]
+    {
         assert_eq!(source_id.0, "d2");
         assert_eq!(*stage, "extract");
-        assert!(error.contains("d2"), "error preserves stage detail: {error}");
-    } else { unreachable!() }
+        assert!(
+            error.contains("d2"),
+            "error preserves stage detail: {error}"
+        );
+    } else {
+        unreachable!()
+    }
 
     // Manifest reflects the same 4-success / 1-failure split.
-    assert_eq!(runner.manifest.list_by_status(ManifestStatus::Success).unwrap().len(), 4 * 4); // 4 docs × 4 stages
-    assert_eq!(runner.manifest.list_by_status(ManifestStatus::Failed).unwrap().len(), 1);
+    assert_eq!(
+        runner
+            .manifest
+            .list_by_status(ManifestStatus::Success)
+            .unwrap()
+            .len(),
+        4 * 5
+    ); // 4 docs × 5 stages (extract, quality, chunk, embed, index)
+    assert_eq!(
+        runner
+            .manifest
+            .list_by_status(ManifestStatus::Failed)
+            .unwrap()
+            .len(),
+        1
+    );
 
     // Indexer has 4 docs' chunks (1 each from the trivial extractor).
     assert_eq!(runner.pipeline.indexer.count(), 4);
@@ -106,21 +154,35 @@ fn embedder_failure_does_not_write_to_indexer_for_failed_doc() {
         pipeline: Pipeline {
             extractor: PartialFailExtractor { fail_on: vec![] },
             chunker: BlankLineChunker::new(),
-            embedder: PartialFailEmbedder { fail_marker: "d2", inner: StubEmbedder::new() },
+            embedder: PartialFailEmbedder {
+                fail_marker: "d2",
+                inner: StubEmbedder::new(),
+            },
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
         cache: adapter_cache_mem::MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
 
     let _ = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3")]);
 
     // d2 chunks must not appear in the indexer.
-    assert_eq!(runner.pipeline.indexer.by_source(&SourceId("d2".into())).len(), 0);
+    assert_eq!(
+        runner
+            .pipeline
+            .indexer
+            .by_source(&SourceId("d2".into()))
+            .len(),
+        0
+    );
     assert_eq!(runner.pipeline.indexer.count(), 3);
 
     // Manifest: failure is recorded against the embed stage for d2.
-    let failed = runner.manifest.list_by_status(ManifestStatus::Failed).unwrap();
+    let failed = runner
+        .manifest
+        .list_by_status(ManifestStatus::Failed)
+        .unwrap();
     assert_eq!(failed, vec![(SourceId("d2".into()), "embed".into())]);
 }
 
@@ -135,6 +197,7 @@ fn empty_batch_is_a_noop_with_no_outcomes() {
         },
         manifest: MemManifest::new(),
         cache: adapter_cache_mem::MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
     assert!(runner.ingest_batch(&[]).is_empty());
     assert_eq!(runner.pipeline.indexer.count(), 0);
@@ -144,13 +207,16 @@ fn empty_batch_is_a_noop_with_no_outcomes() {
 fn outcomes_preserve_input_order() {
     let runner = BatchRunner {
         pipeline: Pipeline {
-            extractor: PartialFailExtractor { fail_on: vec!["d1", "d3"] },
+            extractor: PartialFailExtractor {
+                fail_on: vec!["d1", "d3"],
+            },
             chunker: BlankLineChunker::new(),
             embedder: StubEmbedder::new(),
             indexer: MemIndexer::new(),
         },
         manifest: MemManifest::new(),
         cache: adapter_cache_mem::MemCache::new(),
+        quality: librarian_domain::QualityConfig::default(),
     };
     let outcomes = runner.ingest_batch(&[doc("d0"), doc("d1"), doc("d2"), doc("d3")]);
     let ids: Vec<_> = outcomes.iter().map(|o| o.source_id().0.clone()).collect();

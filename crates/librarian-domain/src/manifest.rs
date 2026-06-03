@@ -14,6 +14,9 @@ pub enum ManifestStatus {
     Failed,
     RecoveredViaFallback,
     Skipped,
+    /// Advisory (F-EQ.2): gross extraction artifacts were detected. The
+    /// document is still indexed; the flag surfaces it for operator review.
+    Flagged,
     Removed,
 }
 
@@ -37,12 +40,20 @@ pub trait ManifestStore {
 impl<T: ManifestStore + ?Sized> ManifestStore for &T {
     type Error = T::Error;
     fn record(
-        &self, source_id: &SourceId, stage: &str, status: ManifestStatus,
-        attempts: u32, error: Option<&str>, output_ref: Option<&CacheKey>,
+        &self,
+        source_id: &SourceId,
+        stage: &str,
+        status: ManifestStatus,
+        attempts: u32,
+        error: Option<&str>,
+        output_ref: Option<&CacheKey>,
     ) -> Result<(), Self::Error> {
         (**self).record(source_id, stage, status, attempts, error, output_ref)
     }
-    fn list_by_status(&self, status: ManifestStatus) -> Result<Vec<(SourceId, String)>, Self::Error> {
+    fn list_by_status(
+        &self,
+        status: ManifestStatus,
+    ) -> Result<Vec<(SourceId, String)>, Self::Error> {
         (**self).list_by_status(status)
     }
 }
@@ -60,6 +71,7 @@ mod tests {
             ManifestStatus::Failed,
             ManifestStatus::RecoveredViaFallback,
             ManifestStatus::Skipped,
+            ManifestStatus::Flagged,
             ManifestStatus::Removed,
         ] {
             let json = serde_json::to_string(&s).unwrap();

@@ -24,7 +24,9 @@ pub fn distinct_ingested_sources(
         .query_map([], |r| Ok(SourceId(r.get::<_, String>(0)?)))
         .map_err(SqliteManifestError::Db)?;
     let mut out = Vec::new();
-    for r in rows { out.push(r.map_err(SqliteManifestError::Db)?); }
+    for r in rows {
+        out.push(r.map_err(SqliteManifestError::Db)?);
+    }
     Ok(out)
 }
 
@@ -44,7 +46,8 @@ pub fn get_row(
                 Ok(Row {
                     source_id: SourceId(r.get(0)?),
                     stage: r.get(1)?,
-                    status: parse_status(&r.get::<_, String>(2)?).unwrap_or(ManifestStatus::Pending),
+                    status: parse_status(&r.get::<_, String>(2)?)
+                        .unwrap_or(ManifestStatus::Pending),
                     attempts: r.get::<_, i64>(3)? as u32,
                     error: r.get(4)?,
                     output_ref: r.get::<_, Option<String>>(5)?.map(CacheKey),

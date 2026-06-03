@@ -21,7 +21,9 @@ pub trait Embedder: AdapterIdentity {
     /// If the most recent `embed` was wrapped by a fallback combinator, the
     /// runner reads this to decide between `Success` / `RecoveredViaFallback`
     /// / multi-error `Failed`. Default: never a fallback.
-    fn last_event(&self) -> Option<FallbackEvent> { None }
+    fn last_event(&self) -> Option<FallbackEvent> {
+        None
+    }
 }
 
 /// Communicates fallback-combinator outcomes to the runner without changing
