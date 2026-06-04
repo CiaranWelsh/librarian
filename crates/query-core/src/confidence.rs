@@ -61,7 +61,8 @@ impl Default for ConfidenceThresholds {
 }
 
 /// Same fragment heuristic the offline eval uses (`eval/run_eval.py`): a hit is a "fragment"
-/// if it's under 80 characters or a bare markdown heading.
+/// if it's under 80 characters or a bare markdown heading. Tier 2 (`librarian health`) mirrors
+/// this exact definition so online and offline measurements agree.
 fn is_fragment(text: &str) -> bool {
     text.chars().count() < 80 || text.trim_start().starts_with('#')
 }

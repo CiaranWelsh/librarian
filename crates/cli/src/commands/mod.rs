@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod extract;
+pub mod health;
 pub mod ingest;
 pub mod lifecycle;
 pub mod query;
