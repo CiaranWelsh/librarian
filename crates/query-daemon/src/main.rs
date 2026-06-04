@@ -1,6 +1,9 @@
 //! `librarian-serve` — the query daemon binary.
-//! Usage: librarian-serve --config /path/to/daemon.toml
+//!
+//! Usage: `librarian-serve [--config <path>]`. With no `--config` it reads
+//! `$LIBRARIAN_SERVE_CONFIG`, then falls back to `~/.librarian/serve.toml`.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use adapter_indexer_qdrant::QdrantSearcher;
@@ -24,8 +27,12 @@ fn run() -> Result<(), String> {
             other => return Err(format!("unexpected argument: {other}")),
         }
     }
-    let config_path = config_path.ok_or("missing --config <path>")?;
-    let text = std::fs::read_to_string(&config_path).map_err(|e| format!("read config: {e}"))?;
+    let config_path = match config_path {
+        Some(p) => PathBuf::from(p),
+        None => default_config_path()?,
+    };
+    let text = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("read config {}: {e}", config_path.display()))?;
     let cfg: DaemonConfig = toml::from_str(&text).map_err(|e| format!("parse config: {e}"))?;
 
     let embedder = AppEmbedder::from_cfg(&cfg.embedder)?;
@@ -44,6 +51,17 @@ fn run() -> Result<(), String> {
             .await
             .map_err(|e| format!("serve: {e}"))
     })
+}
+
+/// Config path when `--config` is omitted: `$LIBRARIAN_SERVE_CONFIG`, else
+/// `~/.librarian/serve.toml` (mirrors how the fleet resolves `~/.librarian/`).
+fn default_config_path() -> Result<PathBuf, String> {
+    if let Ok(p) = std::env::var("LIBRARIAN_SERVE_CONFIG") {
+        return Ok(PathBuf::from(p));
+    }
+    let home =
+        std::env::var("HOME").map_err(|_| "HOME not set; pass --config <path>".to_string())?;
+    Ok(PathBuf::from(home).join(".librarian").join("serve.toml"))
 }
 
 /// Resolve when the process receives Ctrl-C, letting axum drain in-flight

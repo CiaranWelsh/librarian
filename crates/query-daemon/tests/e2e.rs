@@ -30,7 +30,7 @@ fn wait_until_ready(base: &str, deadline: Duration) -> bool {
 #[ignore = "needs live qdrant + OPENAI_API_KEY"]
 fn serve_and_search_real_corpus() {
     let dir = tempfile::tempdir().unwrap();
-    let cfg = dir.path().join("daemon.toml");
+    let cfg = dir.path().join("serve.toml");
     let qurl =
         std::env::var("LIBRARIAN_QDRANT_URL").unwrap_or_else(|_| "http://localhost:6334".into());
     std::fs::write(
