@@ -73,6 +73,59 @@ async fn search_returns_hits() {
 }
 
 #[tokio::test]
+async fn search_response_includes_confidence() {
+    // Tier 0 (issue 028): every search carries a retrieval-confidence object.
+    let req = Request::post("/v1/search")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"collection":"c","query":"apple","limit":5}"#,
+        ))
+        .unwrap();
+    let resp = test_app().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v = body_json(resp).await;
+    let c = &v["confidence"];
+    assert!(
+        c.is_object(),
+        "search response must carry a confidence object"
+    );
+    let label = c["label"].as_str().unwrap();
+    assert!(
+        matches!(label, "strong" | "weak" | "likely_no_answer"),
+        "unexpected label {label}"
+    );
+    let value = c["value"].as_f64().unwrap();
+    assert!((0.0..=1.0).contains(&value), "value {value} out of [0,1]");
+    // Raw signals are exposed for transparency / calibration.
+    for k in ["top_score", "margin", "score_spread", "fragment_rate"] {
+        assert!(c[k].is_number(), "missing confidence signal {k}");
+    }
+}
+
+#[tokio::test]
+async fn confidence_is_no_answer_on_empty_result() {
+    let stub = StubEmbedder::new();
+    let mem = MemSearcher::new();
+    let v = stub.embed(&["apple"]).unwrap().remove(0);
+    mem.add("col", book_chunk("apple", 0, "apple body"), v);
+    let svc = QueryService::new(Arc::new(stub), mem, 4);
+    let app = router(AppState { svc: Arc::new(svc) });
+
+    // content_type=paper matches nothing → zero hits → LikelyNoAnswer.
+    let req = Request::post("/v1/search")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"collection":"col","query":"apple","content_type":"paper"}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let v = body_json(resp).await;
+    assert_eq!(v["hits"].as_array().unwrap().len(), 0);
+    assert_eq!(v["confidence"]["label"], "likely_no_answer");
+    assert_eq!(v["confidence"]["value"], 0.0);
+}
+
+#[tokio::test]
 async fn empty_query_is_400() {
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")

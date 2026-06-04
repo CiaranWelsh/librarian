@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use librarian_domain::{Embedder, Searcher, SourceId};
-use query_core::{QueryError, QueryService};
+use query_core::{
+    retrieval_confidence, ConfidenceLabel, QueryError, QueryService, RetrievalConfidence,
+};
 
 pub mod config;
 
@@ -139,9 +141,41 @@ struct HitJson {
     text: String,
 }
 
+/// Tier 0 retrieval-confidence (issue 028): a reference-free triage signal, NOT a precise
+/// grade (dense-QPP caveat — see docs/research/rag-quality/FINDINGS.md). Raw signals are
+/// exposed so callers aren't reliant on the composite.
+#[derive(Serialize)]
+struct ConfidenceJson {
+    value: f32,
+    label: &'static str,
+    top_score: f32,
+    margin: f32,
+    score_spread: f32,
+    fragment_rate: f32,
+}
+
+impl From<RetrievalConfidence> for ConfidenceJson {
+    fn from(c: RetrievalConfidence) -> Self {
+        let label = match c.label {
+            ConfidenceLabel::Strong => "strong",
+            ConfidenceLabel::Weak => "weak",
+            ConfidenceLabel::LikelyNoAnswer => "likely_no_answer",
+        };
+        Self {
+            value: c.value,
+            label,
+            top_score: c.top_score,
+            margin: c.margin,
+            score_spread: c.score_spread,
+            fragment_rate: c.fragment_rate,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct SearchResp {
     hits: Vec<HitJson>,
+    confidence: ConfidenceJson,
 }
 
 #[derive(Deserialize)]
@@ -211,6 +245,7 @@ where
             req.content_type.as_deref(),
         )
         .await?;
+    let confidence = ConfidenceJson::from(retrieval_confidence(&hits));
     Ok(Json(SearchResp {
         hits: hits
             .into_iter()
@@ -222,6 +257,7 @@ where
                 text: h.text,
             })
             .collect(),
+        confidence,
     }))
 }
 

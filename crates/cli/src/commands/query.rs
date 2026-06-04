@@ -37,6 +37,19 @@ pub fn cmd_query(daemon: &str, collection: &str, query: &str, limit: u64) -> Res
         let preview: String = text.chars().take(200).collect();
         println!("[{score:.3}] {sid}#{idx}\n  {preview}\n");
     }
+    // Tier 0 retrieval-confidence (issue 028): a triage signal, not a precise grade.
+    let c = &value["confidence"];
+    if c.is_object() {
+        let label = c["label"].as_str().unwrap_or("?").to_uppercase();
+        let val = c["value"].as_f64().unwrap_or(0.0);
+        let top = c["top_score"].as_f64().unwrap_or(0.0);
+        let margin = c["margin"].as_f64().unwrap_or(0.0);
+        let frag = c["fragment_rate"].as_f64().unwrap_or(0.0);
+        println!(
+            "confidence: {label} ({val:.2})  [top {top:.3}, margin {margin:.3}, fragments {:.0}%]",
+            frag * 100.0
+        );
+    }
     Ok(())
 }
 
