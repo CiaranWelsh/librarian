@@ -9,7 +9,7 @@
 
 use serde_json::{json, Value};
 
-use crate::commands::query::search_request;
+use crate::commands::query::fetch_search;
 
 const DEFAULT_JUDGE_MODEL: &str = "gpt-4o-mini";
 
@@ -100,20 +100,7 @@ pub fn cmd_judge(
     let base = std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com".into());
     let model = model.unwrap_or(DEFAULT_JUDGE_MODEL);
 
-    let (url, body) = search_request(daemon, collection, query, k);
-    let client = reqwest::blocking::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .map_err(|e| format!("request failed: {e}"))?;
-    let status = resp.status();
-    let value: Value = resp.json().map_err(|e| format!("bad response: {e}"))?;
-    if !status.is_success() {
-        let code = value["error"]["code"].as_str().unwrap_or("error");
-        let msg = value["error"]["message"].as_str().unwrap_or("");
-        return Err(format!("daemon {status} [{code}]: {msg}"));
-    }
+    let value = fetch_search(daemon, collection, query, k)?;
     let hits = value["hits"].as_array().cloned().unwrap_or_default();
     if hits.is_empty() {
         println!("no hits to judge for {query:?}");

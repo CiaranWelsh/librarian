@@ -14,7 +14,14 @@ pub fn search_request(
     (url, body)
 }
 
-pub fn cmd_query(daemon: &str, collection: &str, query: &str, limit: u64) -> Result<(), String> {
+/// POST a search to the daemon and return the parsed JSON response, mapping the daemon's
+/// error envelope to an `Err`. Shared by `query`, `health`, and `judge`.
+pub fn fetch_search(
+    daemon: &str,
+    collection: &str,
+    query: &str,
+    limit: u64,
+) -> Result<serde_json::Value, String> {
     let (url, body) = search_request(daemon, collection, query, limit);
     let client = reqwest::blocking::Client::new();
     let resp = client
@@ -29,6 +36,11 @@ pub fn cmd_query(daemon: &str, collection: &str, query: &str, limit: u64) -> Res
         let msg = value["error"]["message"].as_str().unwrap_or("");
         return Err(format!("daemon {status} [{code}]: {msg}"));
     }
+    Ok(value)
+}
+
+pub fn cmd_query(daemon: &str, collection: &str, query: &str, limit: u64) -> Result<(), String> {
+    let value = fetch_search(daemon, collection, query, limit)?;
     for hit in value["hits"].as_array().cloned().unwrap_or_default() {
         let score = hit["score"].as_f64().unwrap_or(0.0);
         let sid = hit["source_id"].as_str().unwrap_or("");

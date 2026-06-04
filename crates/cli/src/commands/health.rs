@@ -12,9 +12,9 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 
-use crate::commands::query::search_request;
+use crate::commands::query::fetch_search;
 
 /// Fragment heuristic, mirroring `query_core`'s and `eval/run_eval.py`: under 80 characters or
 /// a bare markdown heading. Inlined to keep the CLI a thin client (no `query-core` dependency);
@@ -108,24 +108,11 @@ pub fn cmd_health(
         return Err("golden probe set is empty".into());
     }
 
-    let client = reqwest::blocking::Client::new();
     let mut per_question: Vec<(Option<usize>, f32, f32)> = Vec::new();
     let mut rows: Vec<(Option<usize>, String)> = Vec::new();
 
     for item in &golden {
-        let (url, body) = search_request(daemon, collection, &item.q, k);
-        let resp = client
-            .post(&url)
-            .json(&body)
-            .send()
-            .map_err(|e| format!("request failed: {e}"))?;
-        let status = resp.status();
-        let value: Value = resp.json().map_err(|e| format!("bad response: {e}"))?;
-        if !status.is_success() {
-            let code = value["error"]["code"].as_str().unwrap_or("error");
-            let msg = value["error"]["message"].as_str().unwrap_or("");
-            return Err(format!("daemon {status} [{code}]: {msg}"));
-        }
+        let value = fetch_search(daemon, collection, &item.q, k)?;
         let hits = value["hits"].as_array().cloned().unwrap_or_default();
         let sources: Vec<String> = hits
             .iter()
