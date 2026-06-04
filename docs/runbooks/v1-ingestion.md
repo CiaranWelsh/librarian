@@ -9,9 +9,19 @@ How to operate librarian against the real corpora (slice 018).
 - `librarian` and `librarian-collection` binaries on PATH (`cargo install --path crates/cli && cargo install --path crates/server`).
 - API keys exported: `OPENAI_API_KEY` for the text embedder; `VOYAGE_API_KEY` if using the code embedder family.
 
-## Configs (one TOML per collection)
+## Configs (one folder per collection)
 
-Each collection has its own `~/.librarian/<name>.toml`.
+Each collection has a folder `~/.librarian/<collection>/` holding one TOML per
+source type; the `collection` field inside each points them all at the same
+qdrant collection:
+
+```
+~/.librarian/
+  software/          pdf.toml  ebook.toml  html.toml  text.toml
+  particle-physics/  pdf.toml  book.toml
+```
+
+A representative file — `~/.librarian/software/pdf.toml`:
 
 ```toml
 collection = "software"
@@ -37,20 +47,21 @@ extractor = "pdf"
 retention = 5
 ```
 
-Variants:
+Variants (same shape, differing `[ingest]` extractor / content_type):
 
-- **`particle-physics.toml`**: same shape, `content_type = "paper"`, `extractor = "pdf"`. Cache and manifest paths under `particle-physics/`.
+- `software/{ebook,html,text}.toml` — the same `software` collection via the `ebook` / `html` / `text` extractors.
+- `particle-physics/pdf.toml` (`content_type = "paper"`) and `particle-physics/book.toml` (book-tuned). Cache and manifest paths under `particle-physics/`.
 
 ## Phase 1 — books corpus → `software` collection
 
 ```bash
-librarian ingest --config ~/.librarian/software.toml ~/Documents/books/
+librarian ingest --config ~/.librarian/software/pdf.toml ~/Documents/books/
 ```
 
 Expected: structured progress lines (`ok\tsource=…\tchunks=…`) per file. Re-run is idempotent — second invocation hits the cache for unchanged files. Inspect:
 
 ```bash
-librarian status --config ~/.librarian/software.toml
+librarian status --config ~/.librarian/software/pdf.toml
 # collection: software
 # points: <N>
 # manifest: success=… cached=… failed=…
@@ -59,7 +70,7 @@ librarian status --config ~/.librarian/software.toml
 ## Phase 2 — particle-physics papers → `particle-physics` collection
 
 ```bash
-librarian ingest --config ~/.librarian/particle-physics.toml ~/Documents/ParticleDetectorPapers/data/library/
+librarian ingest --config ~/.librarian/particle-physics/pdf.toml ~/Documents/ParticleDetectorPapers/data/library/
 ```
 
 Diagnose any rows in `Failed` state via the manifest:
@@ -76,8 +87,8 @@ The CLI's v1 dispatch only wires the single-vector path. To populate the `code` 
 ## Phase 4 — fleet up on Turbo
 
 ```bash
-librarian start software        --config ~/.librarian/software.toml
-librarian start particle-physics --config ~/.librarian/particle-physics.toml
+librarian start software        --config ~/.librarian/software/pdf.toml
+librarian start particle-physics --config ~/.librarian/particle-physics/pdf.toml
 librarian status                # ports listed; uptime ticks
 ```
 
@@ -86,8 +97,8 @@ Each `librarian-collection` exposes the MCP tools `search` / `list_documents` / 
 ## Phase 5 — snapshots + retention
 
 ```bash
-librarian snapshot --config ~/.librarian/software.toml
-librarian snapshot --config ~/.librarian/particle-physics.toml
+librarian snapshot --config ~/.librarian/software/pdf.toml
+librarian snapshot --config ~/.librarian/particle-physics/pdf.toml
 ```
 
 `retention = 5` in each config means after 6 invocations only the newest 5 NAS files remain. Pruning is automatic post-snapshot; nothing else to do.
@@ -100,8 +111,8 @@ To verify a snapshot before something goes wrong:
 # pick a snapshot id from the NAS dir
 ls /mnt/nas/librarian/software/
 
-librarian restore --config ~/.librarian/software.toml <snapshot_id>
-librarian status --config ~/.librarian/software.toml   # points should match
+librarian restore --config ~/.librarian/software/pdf.toml <snapshot_id>
+librarian status --config ~/.librarian/software/pdf.toml   # points should match
 ```
 
 ## Smoke queries from Mac
