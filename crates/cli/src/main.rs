@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use commands::audit::cmd_audit;
+use commands::extract::cmd_extract;
 use commands::ingest::cmd_ingest;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
 use commands::query::cmd_query;
@@ -90,6 +91,23 @@ enum Cmd {
         #[arg(long, default_value = "http://localhost:6700")]
         daemon: String,
     },
+    /// Read a contiguous chunk window from one source via the query daemon
+    /// (the read half of locate-then-extract; pair with `query`).
+    Extract {
+        /// Collection name.
+        collection: String,
+        /// Source id (the `source_id` from a `query` hit).
+        source_id: String,
+        /// First chunk index, inclusive.
+        #[arg(long, default_value_t = 0)]
+        start: u32,
+        /// Last chunk index, exclusive; defaults to start + 20.
+        #[arg(long)]
+        end: Option<u32>,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -114,6 +132,13 @@ fn main() -> ExitCode {
             limit,
             daemon,
         } => cmd_query(&daemon, &collection, &query, limit),
+        Cmd::Extract {
+            collection,
+            source_id,
+            start,
+            end,
+            daemon,
+        } => cmd_extract(&daemon, &collection, &source_id, start, end),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
