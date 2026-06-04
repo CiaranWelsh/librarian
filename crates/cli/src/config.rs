@@ -58,12 +58,34 @@ pub enum EmbedderConfig {
     },
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct IngestConfig {
     #[serde(default = "default_content_type")]
     pub content_type: String, // "book" | "paper" | "code"
     #[serde(default = "default_extractor")]
     pub extractor: String, // "text" | "pdf"
+    /// Chunker to use for text content: "recursive" (issue 027, default) or "blankline".
+    /// Ignored for code content (always uses CodeChunker).
+    #[serde(default = "default_chunker")]
+    pub chunker: String,
+    /// Recursive chunker target size in characters (~512 tokens ≈ 2000 chars).
+    #[serde(default = "default_chunk_size")]
+    pub chunk_size: usize,
+    /// Recursive chunker overlap in characters (~10%).
+    #[serde(default = "default_chunk_overlap")]
+    pub chunk_overlap: usize,
+}
+
+impl Default for IngestConfig {
+    fn default() -> Self {
+        Self {
+            content_type: default_content_type(),
+            extractor: default_extractor(),
+            chunker: default_chunker(),
+            chunk_size: default_chunk_size(),
+            chunk_overlap: default_chunk_overlap(),
+        }
+    }
 }
 
 fn default_content_type() -> String {
@@ -71,6 +93,15 @@ fn default_content_type() -> String {
 }
 fn default_extractor() -> String {
     "text".into()
+}
+fn default_chunker() -> String {
+    "recursive".into()
+}
+fn default_chunk_size() -> usize {
+    2000
+}
+fn default_chunk_overlap() -> usize {
+    200
 }
 
 /// Ingest-quality config (ADR-0006). Maps to `librarian_domain::QualityConfig`.

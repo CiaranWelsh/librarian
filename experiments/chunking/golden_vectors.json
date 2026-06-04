@@ -1,0 +1,135 @@
+{
+  "rcts": [
+    {
+      "name": "three_paras_pack",
+      "text": "alpha\n\nbeta\n\ngamma",
+      "chunk_size": 13,
+      "chunk_overlap": 0,
+      "expected": [
+        "alpha\n\nbeta",
+        "gamma"
+      ]
+    },
+    {
+      "name": "overlap_words",
+      "text": "one two three four five six seven eight",
+      "chunk_size": 15,
+      "chunk_overlap": 5,
+      "expected": [
+        "one two three",
+        "four five six",
+        "six seven",
+        "eight"
+      ]
+    },
+    {
+      "name": "recurse_to_space",
+      "text": "The quick brown fox jumps over the lazy dog near the river bank at dawn",
+      "chunk_size": 30,
+      "chunk_overlap": 8,
+      "expected": [
+        "The quick brown fox jumps over",
+        "over the lazy dog near the",
+        "the river bank at dawn"
+      ]
+    },
+    {
+      "name": "long_word_charsplit",
+      "text": "supercalifragilisticexpialidocious",
+      "chunk_size": 10,
+      "chunk_overlap": 2,
+      "expected": [
+        "supercalif",
+        "ifragilist",
+        "sticexpial",
+        "alidocious"
+      ]
+    },
+    {
+      "name": "mixed_markdownish",
+      "text": "# Heading\n\nFirst paragraph here is short.\n\nSecond paragraph that is quite a bit longer than the first one and will need splitting.",
+      "chunk_size": 50,
+      "chunk_overlap": 10,
+      "expected": [
+        "# Heading\n\nFirst paragraph here is short.",
+        "Second paragraph that is quite a bit longer than",
+        "than the first one and will need splitting."
+      ]
+    },
+    {
+      "name": "newline_recursion",
+      "text": "line one\nline two\nline three\nline four\nline five",
+      "chunk_size": 20,
+      "chunk_overlap": 5,
+      "expected": [
+        "line one\nline two",
+        "line three",
+        "line four\nline five"
+      ]
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "chunk_size": 50,
+      "chunk_overlap": 10,
+      "expected": []
+    },
+    {
+      "name": "single_under_budget",
+      "text": "short text",
+      "chunk_size": 100,
+      "chunk_overlap": 10,
+      "expected": [
+        "short text"
+      ]
+    }
+  ],
+  "md": [
+    {
+      "name": "headers_basic",
+      "file": "testing_Effective-Software-Testing__Chapter-09-Integration.md",
+      "text": "# Chapter 9\n\nIntro to integration testing here.\n\n## Database tests\n\nWe submit SQL to the database and check the results returned.\n\n### DAO\n\nThe DAO class wraps the queries.",
+      "chunk_size": 80,
+      "chunk_overlap": 10,
+      "expected": [
+        "Effective-Software-Testing > Chapter-09-Integration > Chapter 9\n\nIntro to integration testing here.",
+        "Effective-Software-Testing > Chapter-09-Integration > Chapter 9 > Database tests\n\nWe submit SQL to the database and check the results returned.",
+        "Effective-Software-Testing > Chapter-09-Integration > Chapter 9 > Database tests > DAO\n\nThe DAO class wraps the queries."
+      ]
+    },
+    {
+      "name": "no_headers",
+      "file": "misc_Some-Book__Plain.md",
+      "text": "Just plain text with no markdown headers at all, several sentences long to force packing into a couple of chunks perhaps.",
+      "chunk_size": 50,
+      "chunk_overlap": 10,
+      "expected": [
+        "Some-Book > Plain\n\nJust plain text with no markdown headers at all,",
+        "Some-Book > Plain\n\nat all, several sentences long to force packing",
+        "Some-Book > Plain\n\npacking into a couple of chunks perhaps."
+      ]
+    },
+    {
+      "name": "code_fence",
+      "file": "lang_Some-Book__Ch1.md",
+      "text": "# Title\n\nIntro text here.\n\n```\n# not a header\nsome code line\n```\n\nAfter the code block.",
+      "chunk_size": 120,
+      "chunk_overlap": 10,
+      "expected": [
+        "Some-Book > Ch1 > Title\n\nIntro text here.  \n```\n# not a header\nsome code line\n```  \nAfter the code block."
+      ]
+    },
+    {
+      "name": "header_pop",
+      "file": "arch_Book__Ch2.md",
+      "text": "# A\n\nUnder section A here.\n\n## B\n\nUnder subsection B.\n\n# C\n\nUnder section C only.",
+      "chunk_size": 120,
+      "chunk_overlap": 10,
+      "expected": [
+        "Book > Ch2 > A\n\nUnder section A here.",
+        "Book > Ch2 > A > B\n\nUnder subsection B.",
+        "Book > Ch2 > C\n\nUnder section C only."
+      ]
+    }
+  ]
+}

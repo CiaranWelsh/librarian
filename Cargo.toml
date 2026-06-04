@@ -20,6 +20,7 @@ members = [
     "crates/adapter-embedder-voyage",
     "crates/adapter-embedder-multimodal-stub",
     "crates/adapter-chunker-blankline",
+    "crates/adapter-chunker-recursive",
     "crates/adapter-embedder-stub",
     "crates/adapter-embedder-openai",
     "crates/adapter-embedder-fallback",
@@ -55,6 +56,7 @@ markdown-cleaner = { path = "crates/markdown-cleaner" }
 adapter-embedder-voyage = { path = "crates/adapter-embedder-voyage" }
 adapter-embedder-multimodal-stub = { path = "crates/adapter-embedder-multimodal-stub" }
 adapter-chunker-blankline = { path = "crates/adapter-chunker-blankline" }
+adapter-chunker-recursive = { path = "crates/adapter-chunker-recursive" }
 adapter-embedder-stub = { path = "crates/adapter-embedder-stub" }
 adapter-embedder-openai = { path = "crates/adapter-embedder-openai" }
 adapter-embedder-fallback = { path = "crates/adapter-embedder-fallback" }

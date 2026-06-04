@@ -20,6 +20,7 @@ adapter-extractor-pdf.workspace = true
 adapter-extractor-ebook.workspace = true
 adapter-extractor-html.workspace = true
 adapter-chunker-blankline.workspace = true
+adapter-chunker-recursive.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-embedder-openai.workspace = true
 adapter-embedder-voyage.workspace = true
