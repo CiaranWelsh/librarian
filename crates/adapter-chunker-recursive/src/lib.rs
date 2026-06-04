@@ -76,45 +76,44 @@ impl Chunker for RecursiveChunker {
         if text.spans.is_empty() {
             return Err(RecursiveChunkError);
         }
-        // Header detection needs the whole document, so join the spans back into one
-        // markdown string before the breadcrumb/recursive pipeline.
-        let md = text
-            .spans
-            .iter()
-            .map(|s| s.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
         let file = doc.path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let pieces = markdown::chunk_markdown(&md, file, self.chunk_size, self.chunk_overlap);
-        if pieces.is_empty() {
+        // Chunk each span independently so the originating page survives onto every chunk.
+        // For single-span markdown (the text extractor's output) this is identical to
+        // whole-document chunking; for multi-span sources (PDF pages) it preserves the page.
+        let mut chunks = Vec::new();
+        let mut index: u32 = 0;
+        for span in &text.spans {
+            let pieces =
+                markdown::chunk_markdown(&span.text, file, self.chunk_size, self.chunk_overlap);
+            for piece in pieces {
+                chunks.push(make_chunk(doc, index, piece, span.page));
+                index += 1;
+            }
+        }
+        if chunks.is_empty() {
             return Err(RecursiveChunkError);
         }
-        let chunks = pieces
-            .into_iter()
-            .enumerate()
-            .map(|(i, piece)| make_chunk(doc, i as u32, piece))
-            .collect();
         Ok(chunks)
     }
 }
 
-/// Build the typed `ChunkPayload` for `doc`'s content type. Title is the file stem; page
-/// is unknown for breadcrumb-chunked markdown.
-fn payload_for(doc: &Document, title: &str) -> ChunkPayload {
+/// Build the typed `ChunkPayload` for `doc`'s content type. Title is the file stem; `page`
+/// is the originating span's page (when the source tracks pages, e.g. PDFs).
+fn payload_for(doc: &Document, title: &str, page: Option<u32>) -> ChunkPayload {
     match doc.content_type {
         ContentType::Book => ChunkPayload::Book(BookMeta {
             title: title.to_string(),
             author: None,
             chapter: None,
             section: None,
-            page: None,
+            page,
         }),
         ContentType::Paper => ChunkPayload::Paper(PaperMeta {
             title: title.to_string(),
             authors: vec![],
             section: None,
-            page_start: None,
-            page_end: None,
+            page_start: page,
+            page_end: page,
         }),
         ContentType::Code => ChunkPayload::Code(CodeMeta {
             repo: None,
@@ -126,8 +125,9 @@ fn payload_for(doc: &Document, title: &str) -> ChunkPayload {
     }
 }
 
-/// Build one domain `Chunk` from a breadcrumb-prefixed `text` at position `index` in `doc`.
-fn make_chunk(doc: &Document, index: u32, text: String) -> Chunk {
+/// Build one domain `Chunk` from a breadcrumb-prefixed `text` at position `index` in `doc`,
+/// carrying the originating span's `page`.
+fn make_chunk(doc: &Document, index: u32, text: String, page: Option<u32>) -> Chunk {
     let title = doc
         .path
         .file_stem()
@@ -138,7 +138,7 @@ fn make_chunk(doc: &Document, index: u32, text: String) -> Chunk {
         chunk_id: ChunkId(format!("{}#{}", doc.source_id.0, index)),
         source_id: doc.source_id.clone(),
         chunk_index: index,
-        payload: payload_for(doc, &title),
+        payload: payload_for(doc, &title, page),
         text,
         provenance: Provenance::default(),
     }

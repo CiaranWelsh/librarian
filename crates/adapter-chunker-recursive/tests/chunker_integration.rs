@@ -5,7 +5,8 @@
 
 use adapter_chunker_recursive::RecursiveChunker;
 use librarian_domain::{
-    Chunker, ContentType, Document, ExtractedText, SourceHash, SourceId, SpanKind, TextSpan,
+    ChunkPayload, Chunker, ContentType, Document, ExtractedText, SourceHash, SourceId, SpanKind,
+    TextSpan,
 };
 use serde::Deserialize;
 
@@ -67,5 +68,55 @@ fn chunk_reproduces_pipeline_and_indexes_sequentially() {
     assert!(
         chunks.iter().all(|ch| ch.source_id == doc.source_id),
         "source_id must be preserved on every chunk"
+    );
+}
+
+#[test]
+fn preserves_page_metadata_across_spans() {
+    // Multi-span source (e.g. a PDF, one span per page): each chunk must carry the page of
+    // the span it came from, and indices must run sequentially across spans.
+    let doc = Document {
+        source_id: SourceId("physics_Paper__Body.pdf".into()),
+        source_hash: SourceHash("h".into()),
+        content_type: ContentType::Paper,
+        path: "physics_Paper__Body.pdf".into(),
+        work_id: None,
+    };
+    let spans = vec![
+        TextSpan {
+            kind: SpanKind::Paragraph,
+            text: "First page paragraph about silicon detectors.".into(),
+            page: Some(1),
+            byte_range: 0..0,
+        },
+        TextSpan {
+            kind: SpanKind::Paragraph,
+            text: "Second page paragraph about time of arrival.".into(),
+            page: Some(2),
+            byte_range: 0..0,
+        },
+    ];
+    let chunker = RecursiveChunker::with_budget(2000, 200);
+    let chunks = chunker
+        .chunk(&doc, ExtractedText { spans })
+        .expect("chunking succeeds");
+
+    let idxs: Vec<u32> = chunks.iter().map(|ch| ch.chunk_index).collect();
+    assert_eq!(
+        idxs,
+        (0..chunks.len() as u32).collect::<Vec<_>>(),
+        "indices must be sequential across spans"
+    );
+
+    let pages: Vec<Option<u32>> = chunks
+        .iter()
+        .map(|ch| match &ch.payload {
+            ChunkPayload::Paper(m) => m.page_start,
+            _ => None,
+        })
+        .collect();
+    assert!(
+        pages.contains(&Some(1)) && pages.contains(&Some(2)),
+        "each chunk must carry its source span's page; got {pages:?}"
     );
 }
