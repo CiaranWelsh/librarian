@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "adapter-cache-fs"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "tempfile",
@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-cache-mem"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-chunker-blankline"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-chunker-code"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -37,14 +37,14 @@ dependencies = [
 
 [[package]]
 name = "adapter-embedder-fallback"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
 ]
 
 [[package]]
 name = "adapter-embedder-multimodal-stub"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "sha2",
@@ -52,7 +52,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-embedder-openai"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "mockito",
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-embedder-stub"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "sha2",
@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-embedder-voyage"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "mockito",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-extractor-code"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "tempfile",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-extractor-ebook"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "markdown-cleaner",
@@ -103,7 +103,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-extractor-html"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "markdown-cleaner",
@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-extractor-pdf"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "tempfile",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-extractor-text"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -130,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-indexer-mem"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-indexer-qdrant"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-chunker-code",
  "adapter-embedder-multimodal-stub",
@@ -157,7 +157,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-manifest-mem"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "thiserror 1.0.69",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-manifest-sqlite"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "librarian-domain",
  "rusqlite",
@@ -175,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "adapter-snapshotter-qdrant-nas"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-indexer-qdrant",
  "librarian-domain",
@@ -1312,7 +1312,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "librarian-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-cache-fs",
  "adapter-chunker-blankline",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "librarian-domain"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "hex",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "librarian-runner"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-cache-fs",
  "adapter-cache-mem",
@@ -1383,7 +1383,7 @@ dependencies = [
 
 [[package]]
 name = "librarian-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "query-daemon",
@@ -1442,7 +1442,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "markdown-cleaner"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "once_cell",
  "regex",
@@ -1612,7 +1612,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipeline-e2e"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-cache-fs",
  "adapter-cache-mem",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "query-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-embedder-stub",
  "adapter-indexer-mem",
@@ -1772,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "query-daemon"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "adapter-embedder-openai",
  "adapter-embedder-stub",
