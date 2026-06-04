@@ -88,11 +88,14 @@ impl QdrantIndexer {
                     },
                 );
                 for (name, dim) in &self.extra_slots {
-                    params.insert(name.clone(), VectorParams {
-                        size: *dim,
-                        distance: Distance::Cosine.into(),
-                        ..Default::default()
-                    });
+                    params.insert(
+                        name.clone(),
+                        VectorParams {
+                            size: *dim,
+                            distance: Distance::Cosine.into(),
+                            ..Default::default()
+                        },
+                    );
                 }
                 let cfg = VectorsConfig {
                     config: Some(VectorsCfg::ParamsMap(VectorParamsMap { map: params })),
@@ -135,23 +138,37 @@ impl QdrantIndexer {
                 .with_payload(true)
                 .vector_name("text");
             if let Some(ct) = filter_content_type {
-                req = req.filter(Filter::must([Condition::matches("content_type", ct.to_string())]));
+                req = req.filter(Filter::must([Condition::matches(
+                    "content_type",
+                    ct.to_string(),
+                )]));
             }
-            let r = self.client.search_points(req).await.map_err(QdrantError::client)?;
-            Ok(r.result.into_iter().map(|p| {
-                let payload_get = |k: &str| -> Option<String> {
-                    p.payload.get(k).and_then(|v| v.as_str().map(|s| s.to_string()))
-                };
-                SearchHit {
-                    score: p.score,
-                    source_id: payload_get("source_id").unwrap_or_default(),
-                    chunk_index: p.payload.get("chunk_index")
-                        .and_then(|v| v.as_integer())
-                        .unwrap_or(0) as u32,
-                    text: payload_get("text").unwrap_or_default(),
-                    content_type: payload_get("content_type").unwrap_or_default(),
-                }
-            }).collect())
+            let r = self
+                .client
+                .search_points(req)
+                .await
+                .map_err(QdrantError::client)?;
+            Ok(r.result
+                .into_iter()
+                .map(|p| {
+                    let payload_get = |k: &str| -> Option<String> {
+                        p.payload
+                            .get(k)
+                            .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    };
+                    SearchHit {
+                        score: p.score,
+                        source_id: payload_get("source_id").unwrap_or_default(),
+                        chunk_index: p
+                            .payload
+                            .get("chunk_index")
+                            .and_then(|v| v.as_integer())
+                            .unwrap_or(0) as u32,
+                        text: payload_get("text").unwrap_or_default(),
+                        content_type: payload_get("content_type").unwrap_or_default(),
+                    }
+                })
+                .collect())
         })
     }
 
@@ -166,16 +183,31 @@ impl QdrantIndexer {
         self.rt.block_on(async {
             use qdrant_client::qdrant::ScrollPointsBuilder;
             let filter = Filter::must([Condition::matches("source_id", source_id.0.clone())]);
-            let r = self.client
-                .scroll(ScrollPointsBuilder::new(&self.collection).filter(filter).with_payload(true).limit(1024))
+            let r = self
+                .client
+                .scroll(
+                    ScrollPointsBuilder::new(&self.collection)
+                        .filter(filter)
+                        .with_payload(true)
+                        .limit(1024),
+                )
                 .await
                 .map_err(QdrantError::client)?;
-            let mut hits: Vec<(u32, String)> = r.result.into_iter().filter_map(|p| {
-                let idx = p.payload.get("chunk_index").and_then(|v| v.as_integer())? as u32;
-                if idx < start || idx >= end { return None; }
-                let text = p.payload.get("text").and_then(|v| v.as_str().map(|s| s.to_string()))?;
-                Some((idx, text))
-            }).collect();
+            let mut hits: Vec<(u32, String)> = r
+                .result
+                .into_iter()
+                .filter_map(|p| {
+                    let idx = p.payload.get("chunk_index").and_then(|v| v.as_integer())? as u32;
+                    if idx < start || idx >= end {
+                        return None;
+                    }
+                    let text = p
+                        .payload
+                        .get("text")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))?;
+                    Some((idx, text))
+                })
+                .collect();
             hits.sort_by_key(|(i, _)| *i);
             Ok(hits)
         })
@@ -219,7 +251,9 @@ impl QdrantIndexer {
         chunks: &[Chunk],
         named_vectors: std::collections::BTreeMap<String, Vec<Vector>>,
     ) -> Result<(), QdrantError> {
-        if chunks.is_empty() { return Ok(()); }
+        if chunks.is_empty() {
+            return Ok(());
+        }
         for (slot, vs) in &named_vectors {
             if vs.len() != chunks.len() {
                 return Err(QdrantError::LengthMismatch {
@@ -229,27 +263,31 @@ impl QdrantIndexer {
             }
             let _ = slot;
         }
-        let points: Vec<PointStruct> = chunks.iter().enumerate().map(|(i, c)| {
-            let id = PointId {
-                point_id_options: Some(PointIdOptions::Uuid(
-                    point_id(&c.source_id, c.chunk_index).to_string(),
-                )),
-            };
-            let mut named = HashMap::new();
-            for (slot, vs) in &named_vectors {
-                if !vs[i].is_empty() {
-                    named.insert(slot.clone(), QVector::from(vs[i].clone()));
+        let points: Vec<PointStruct> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let id = PointId {
+                    point_id_options: Some(PointIdOptions::Uuid(
+                        point_id(&c.source_id, c.chunk_index).to_string(),
+                    )),
+                };
+                let mut named = HashMap::new();
+                for (slot, vs) in &named_vectors {
+                    if !vs[i].is_empty() {
+                        named.insert(slot.clone(), QVector::from(vs[i].clone()));
+                    }
                 }
-            }
-            let vectors = qdrant_client::qdrant::Vectors {
-                vectors_options: Some(VectorsOptions::Vectors(NamedVectors { vectors: named })),
-            };
-            PointStruct {
-                id: Some(id),
-                vectors: Some(vectors),
-                payload: build_payload(c).into(),
-            }
-        }).collect();
+                let vectors = qdrant_client::qdrant::Vectors {
+                    vectors_options: Some(VectorsOptions::Vectors(NamedVectors { vectors: named })),
+                };
+                PointStruct {
+                    id: Some(id),
+                    vectors: Some(vectors),
+                    payload: build_payload(c).into(),
+                }
+            })
+            .collect();
 
         self.rt.block_on(async {
             self.client
@@ -288,8 +326,12 @@ impl QdrantIndexer {
 }
 
 impl AdapterIdentity for QdrantIndexer {
-    fn name(&self) -> &str { "qdrant-indexer" }
-    fn version(&self) -> StageVersion { StageVersion("0.1.0".into()) }
+    fn name(&self) -> &str {
+        "qdrant-indexer"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("0.1.0".into())
+    }
     fn config_hash(&self) -> ConfigHash {
         ConfigHash(format!("col={};dim={}", self.collection, self.dim))
     }

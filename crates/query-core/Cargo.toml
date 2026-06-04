@@ -1,0 +1,15 @@
+[package]
+name = "query-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+librarian-domain = { path = "../librarian-domain" }
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+adapter-embedder-stub = { path = "../adapter-embedder-stub" }
+adapter-indexer-mem = { path = "../adapter-indexer-mem" }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "macros"] }

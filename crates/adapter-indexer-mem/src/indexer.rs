@@ -13,9 +13,15 @@ pub struct MemIndexer {
 }
 
 impl MemIndexer {
-    pub fn new() -> Self { Self::default() }
-    pub fn points(&self) -> Vec<Point> { self.points.lock().unwrap().values().cloned().collect() }
-    pub fn count(&self) -> usize { self.points.lock().unwrap().len() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn points(&self) -> Vec<Point> {
+        self.points.lock().unwrap().values().cloned().collect()
+    }
+    pub fn count(&self) -> usize {
+        self.points.lock().unwrap().len()
+    }
     pub fn by_source(&self, source_id: &SourceId) -> Vec<Point> {
         self.points
             .lock()
@@ -28,9 +34,15 @@ impl MemIndexer {
 }
 
 impl AdapterIdentity for MemIndexer {
-    fn name(&self) -> &str { "mem-indexer" }
-    fn version(&self) -> StageVersion { StageVersion("0.1.0".into()) }
-    fn config_hash(&self) -> ConfigHash { ConfigHash("default".into()) }
+    fn name(&self) -> &str {
+        "mem-indexer"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("0.1.0".into())
+    }
+    fn config_hash(&self) -> ConfigHash {
+        ConfigHash("default".into())
+    }
 }
 
 impl Indexer for MemIndexer {
@@ -47,7 +59,10 @@ impl Indexer for MemIndexer {
         for (c, v) in chunks.iter().zip(vectors.iter()) {
             g.insert(
                 c.chunk_id.0.clone(),
-                Point { chunk: c.clone(), vector: v.clone() },
+                Point {
+                    chunk: c.clone(),
+                    vector: v.clone(),
+                },
             );
         }
         Ok(())
@@ -70,7 +85,10 @@ impl Indexer for MemIndexer {
         for (c, v) in chunks.iter().zip(vectors.iter()) {
             g.insert(
                 c.chunk_id.0.clone(),
-                Point { chunk: c.clone(), vector: v.clone() },
+                Point {
+                    chunk: c.clone(),
+                    vector: v.clone(),
+                },
             );
         }
         Ok(())

@@ -1,94 +1,16 @@
-//! Server-side TOML config + embedder construction helpers.
+//! Server-side TOML config. The MCP server is a thin client of the query
+//! daemon, so it only needs to know which collection to query and where the
+//! daemon lives — no qdrant/manifest/embedder configuration here.
 
-use adapter_embedder_openai::{OpenAiConfig, OpenAiEmbedder};
-use adapter_embedder_stub::StubEmbedder;
-use adapter_embedder_voyage::{VoyageConfig, VoyageEmbedder};
-use librarian_domain::Embedder;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub collection: String,
-    pub qdrant: QdrantCfg,
-    pub paths: Paths,
-    pub embedder: EmbedderCfg,
+    pub daemon_url: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct QdrantCfg {
-    pub url: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Paths {
-    pub manifest: PathBuf,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum EmbedderCfg {
-    Stub,
-    Openai {
-        model: String,
-        dimensions: usize,
-        #[serde(default)]
-        batch_size: Option<usize>,
-    },
-    Voyage {
-        model: String,
-        dimensions: usize,
-        #[serde(default)]
-        batch_size: Option<usize>,
-    },
-}
-
-/// Dimension lookup used by composition root before constructing the concrete embedder.
-pub fn embedder_dim(cfg: &EmbedderCfg) -> u64 {
-    match cfg {
-        EmbedderCfg::Stub => StubEmbedder::new().dimension() as u64,
-        EmbedderCfg::Openai { dimensions, .. } => *dimensions as u64,
-        EmbedderCfg::Voyage { dimensions, .. } => *dimensions as u64,
-    }
-}
-
-pub fn embed_query(cfg: &EmbedderCfg, q: &str) -> Result<Vec<f32>, String> {
-    match cfg {
-        EmbedderCfg::Stub => StubEmbedder::new()
-            .embed(&[q])
-            .map(|v| v.into_iter().next().unwrap())
-            .map_err(|e| e.to_string()),
-        EmbedderCfg::Openai {
-            model,
-            dimensions,
-            batch_size,
-        } => {
-            let e = OpenAiEmbedder::from_env(OpenAiConfig {
-                model: model.clone(),
-                dimensions: *dimensions,
-                endpoint: None,
-                batch_size: *batch_size,
-                timeout: None,
-            })
-            .map_err(|e| e.to_string())?;
-            e.embed(&[q])
-                .map(|v| v.into_iter().next().unwrap())
-                .map_err(|e| e.to_string())
-        }
-        EmbedderCfg::Voyage {
-            model,
-            dimensions,
-            batch_size,
-        } => {
-            let e = VoyageEmbedder::from_env(VoyageConfig {
-                model: model.clone(),
-                dimensions: *dimensions,
-                endpoint: None,
-                batch_size: *batch_size,
-                timeout: None,
-            })
-            .map_err(|e| e.to_string())?;
-            e.embed_query(q).map_err(|e| e.to_string())
-        }
-    }
+pub fn load(config_path: &std::path::Path) -> Result<Config, String> {
+    let s = std::fs::read_to_string(config_path).map_err(|e| format!("config io: {e}"))?;
+    toml::from_str(&s).map_err(|e| format!("config parse: {e}"))
 }

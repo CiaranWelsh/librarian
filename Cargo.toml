@@ -26,6 +26,8 @@ members = [
     "crates/pipeline-e2e",
     "crates/cli",
     "crates/server",
+    "crates/query-core",
+    "crates/query-daemon",
 ]
 
 [workspace.package]
@@ -75,3 +77,5 @@ walkdir = "2"
 libc = "0.2"
 regex = "1"
 once_cell = "1"
+axum = "0.7"
+tower = { version = "0.5", features = ["util"] }

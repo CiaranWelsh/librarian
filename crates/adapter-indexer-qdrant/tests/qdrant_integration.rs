@@ -3,9 +3,7 @@
 //! for slice 005). If unreachable, tests are skipped (not failed).
 
 use adapter_indexer_qdrant::{point_id, QdrantIndexer};
-use librarian_domain::{
-    BookMeta, Chunk, ChunkId, ChunkPayload, Indexer, Provenance, SourceId,
-};
+use librarian_domain::{BookMeta, Chunk, ChunkId, ChunkPayload, Indexer, Provenance, SourceId};
 
 fn url() -> String {
     std::env::var("LIBRARIAN_QDRANT_URL").unwrap_or_else(|_| "http://localhost:6533".into())
@@ -31,7 +29,11 @@ fn chunk(sid: &str, idx: u32, text: &str) -> Chunk {
         chunk_index: idx,
         text: text.into(),
         payload: ChunkPayload::Book(BookMeta {
-            title: "t".into(), author: None, chapter: None, section: None, page: None,
+            title: "t".into(),
+            author: None,
+            chapter: None,
+            section: None,
+            page: None,
         }),
         provenance: Provenance::default(),
     }
@@ -44,7 +46,10 @@ fn vec1(seed: f32) -> Vec<f32> {
 #[test]
 fn upsert_then_count_matches_input() {
     let collection = unique_collection("upsert");
-    let Some(ix) = open_or_skip(&collection, 4) else { eprintln!("skip: no Qdrant"); return; };
+    let Some(ix) = open_or_skip(&collection, 4) else {
+        eprintln!("skip: no Qdrant");
+        return;
+    };
 
     let chunks = vec![chunk("a", 0, "hi"), chunk("a", 1, "hello")];
     let vectors = vec![vec1(0.1), vec1(0.2)];
@@ -59,33 +64,51 @@ fn upsert_then_count_matches_input() {
 #[test]
 fn delete_by_source_id_removes_only_matching_source() {
     let collection = unique_collection("delete");
-    let Some(ix) = open_or_skip(&collection, 4) else { eprintln!("skip: no Qdrant"); return; };
+    let Some(ix) = open_or_skip(&collection, 4) else {
+        eprintln!("skip: no Qdrant");
+        return;
+    };
 
     ix.upsert(
         &[chunk("a", 0, "x"), chunk("a", 1, "y"), chunk("b", 0, "z")],
         &[vec1(0.1), vec1(0.2), vec1(0.3)],
-    ).expect("seed");
+    )
+    .expect("seed");
     assert_eq!(ix.count().unwrap(), 3);
     assert_eq!(ix.count_by_source(&SourceId("a".into())).unwrap(), 2);
 
-    ix.delete_by_source_id(&SourceId("a".into())).expect("delete a");
+    ix.delete_by_source_id(&SourceId("a".into()))
+        .expect("delete a");
     assert_eq!(ix.count_by_source(&SourceId("a".into())).unwrap(), 0);
-    assert_eq!(ix.count_by_source(&SourceId("b".into())).unwrap(), 1, "b untouched");
+    assert_eq!(
+        ix.count_by_source(&SourceId("b".into())).unwrap(),
+        1,
+        "b untouched"
+    );
 
     // Idempotent on absent source.
-    ix.delete_by_source_id(&SourceId("nope".into())).expect("delete nope");
+    ix.delete_by_source_id(&SourceId("nope".into()))
+        .expect("delete nope");
     assert_eq!(ix.count().unwrap(), 1);
 }
 
 #[test]
 fn replace_drops_orphan_chunks() {
     let collection = unique_collection("replace");
-    let Some(ix) = open_or_skip(&collection, 4) else { eprintln!("skip: no Qdrant"); return; };
+    let Some(ix) = open_or_skip(&collection, 4) else {
+        eprintln!("skip: no Qdrant");
+        return;
+    };
 
     ix.upsert(
-        &[chunk("a", 0, "old0"), chunk("a", 1, "old1"), chunk("a", 2, "old2")],
+        &[
+            chunk("a", 0, "old0"),
+            chunk("a", 1, "old1"),
+            chunk("a", 2, "old2"),
+        ],
         &[vec1(0.1), vec1(0.2), vec1(0.3)],
-    ).expect("seed");
+    )
+    .expect("seed");
     assert_eq!(ix.count().unwrap(), 3);
 
     // Replace with a single chunk — chunks 1 and 2 become orphans and must be removed.
@@ -93,15 +116,23 @@ fn replace_drops_orphan_chunks() {
         &SourceId("a".into()),
         &[chunk("a", 0, "new0")],
         &[vec1(0.4)],
-    ).expect("replace");
-    assert_eq!(ix.count_by_source(&SourceId("a".into())).unwrap(), 1, "no orphans");
+    )
+    .expect("replace");
+    assert_eq!(
+        ix.count_by_source(&SourceId("a".into())).unwrap(),
+        1,
+        "no orphans"
+    );
     assert_eq!(ix.count().unwrap(), 1);
 }
 
 #[test]
 fn collection_open_is_idempotent() {
     let collection = unique_collection("idem");
-    let Some(_ix1) = open_or_skip(&collection, 4) else { eprintln!("skip: no Qdrant"); return; };
+    let Some(_ix1) = open_or_skip(&collection, 4) else {
+        eprintln!("skip: no Qdrant");
+        return;
+    };
     // Reopen — must not error.
     let ix2 = QdrantIndexer::open(&url(), &collection, 4).expect("reopen");
     drop(ix2);

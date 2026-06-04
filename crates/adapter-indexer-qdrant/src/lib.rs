@@ -6,8 +6,10 @@ mod indexer;
 mod payload;
 mod point_id;
 mod search;
+pub mod searcher;
 
 pub use error::QdrantError;
 pub use indexer::QdrantIndexer;
 pub use point_id::point_id;
 pub use search::SearchHit;
+pub use searcher::QdrantSearcher;

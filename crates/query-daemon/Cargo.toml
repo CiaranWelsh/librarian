@@ -1,0 +1,33 @@
+[package]
+name = "query-daemon"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[[bin]]
+name = "librarian-serve"
+path = "src/main.rs"
+
+[dependencies]
+query-core = { path = "../query-core" }
+librarian-domain = { path = "../librarian-domain" }
+adapter-indexer-qdrant = { path = "../adapter-indexer-qdrant" }
+adapter-embedder-openai = { path = "../adapter-embedder-openai" }
+adapter-embedder-stub = { path = "../adapter-embedder-stub" }
+adapter-indexer-mem = { path = "../adapter-indexer-mem", optional = true }
+axum.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+adapter-indexer-mem = { path = "../adapter-indexer-mem" }
+reqwest = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+
+[features]
+test-support = ["dep:adapter-indexer-mem"]

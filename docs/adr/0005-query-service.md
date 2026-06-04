@@ -45,28 +45,33 @@ the CLI and MCP server as **thin clients** over its HTTP API. Concrete commitmen
 
 | Endpoint | In | Out | Backs |
 |---|---|---|---|
-| `POST /v1/search` | `{collection, query, limit?}` | `{hits:[{score, source_id, content_type, chunk_index, text}]}` | `search` |
+| `POST /v1/search` | `{collection, query, limit?, content_type?}` | `{hits:[{score, source_id, content_type, chunk_index, text}]}` | `search` |
 | `GET /v1/documents` | `?collection` | `{documents:[source_id,…]}` | `list_documents` |
-| `POST /v1/extract` | `{collection, source_id, chapter?, topic?, limit?}` | `{chunks:[…]}` | `get_extract` |
+| `POST /v1/extract` | `{collection, source_id, start?, end?}` | `{source_id, chunks:[{chunk_index, text}]}` | `get_extract` |
 | `GET /v1/collections` | — | `{collections:[{name, points}]}` | — |
 | `GET /healthz` | — | `{status:"ok"}` | — |
 
-**Data flow (a search):** async handler → `query-core::search` → `embed_async(query)`
+**Data flow (a search):** async handler → `query-core::search` → the existing sync embedder run via `spawn_blocking`
 (semaphore-bounded) → `qdrant.search(collection, named-vector "text", vector, k)` → map →
 JSON. `documents`/`extract` skip the embedder (scroll only).
 
-**Embedder:** add a native **async `embed`** to `adapter-embedder-openai`, sharing
-request-build/parse code with the existing sync `embed` (ingest keeps sync). The daemon
-uses the async path; a semaphore bounds in-flight OpenAI calls (rate-limit protection).
+**Embedder:** the daemon **reuses the existing sync `embed`** via
+`tokio::task::spawn_blocking` (Programming Rust, Ch. 20: the endorsed way to run a blocking
+call from async "without affecting responsiveness to other users"), bounded by a semaphore
+(in-flight OpenAI calls → rate-limit protection). No native async embed is added — that
+would be a second embed path to maintain (DRY/KISS); `adapter-embedder-openai` is untouched.
+This refines the original ADR draft (which proposed a native async `embed`): QA-Q1 mandates
+only *bounded, non-blocking* embeds, and `spawn_blocking` + semaphore satisfy that while
+reusing tested code.
 
 **Error → HTTP:** `400` malformed; `404` unknown collection; `502` embedder failure;
 `503 + Retry-After` on embedder `429`; `503` Qdrant down; structured `{"error":{code,message}}`.
 
-**Crate layout:** new `query-core`, `query-daemon`; extend `adapter-indexer-qdrant` with
-`search` + a documents-scroll behind the `Searcher` port; add async `embed` to
-`adapter-embedder-openai`; refactor `crates/server` to the thin MCP adapter; `crates/cli`
-gains `query` (client) and `serve` (launch daemon). The per-collection fleet collapses to
-supervising the one daemon. **Ingest is untouched.**
+**Crate layout:** new `query-core`, `query-daemon`; add a `QdrantSearcher` (async, direct
+`qdrant-client`) to `adapter-indexer-qdrant` and a `MemSearcher` to `adapter-indexer-mem`,
+both behind the new `Searcher` port; refactor `crates/server` to the thin MCP adapter;
+`crates/cli` gains `query` (client) and `serve` (launch daemon). The per-collection fleet
+collapses to supervising the one daemon. **Ingest and `adapter-embedder-openai` are untouched.**
 
 **Testing (TDD):** `query-core` unit-tested against `adapter-embedder-stub` +
 `adapter-indexer-mem` (no network) for ranking / documents / extract scoping; `query-daemon`
@@ -99,7 +104,7 @@ thin clients tested for args→HTTP translation against a mock daemon.
 | Risk | Mitigation |
 |---|---|
 | Embedder rate-limit contention at tens of users | Semaphore bounds in-flight embeds; `429`→`503 + Retry-After`. |
-| Blocking embed call stalls the async runtime | Native async `embed` for the daemon (not a blocking call on a worker). |
+| Blocking embed call stalls the async runtime | Embed runs on `spawn_blocking` (Tokio blocking pool), never on a reactor worker — Programming Rust Ch. 20. |
 | HTTP shape drifts from MCP tools → adapter grows logic | API designed 1:1 with the tools; adapter stays translation-only (enforced by tests). |
 | Demoted `server` crate loses behaviour in the move | Lift logic into `query-core` under its existing/new tests before deleting it from `server`. |
 
@@ -110,8 +115,11 @@ via stateless async; `query-core` testable with zero network; retires `books/mcp
 realises ADR-0004's anticipated REST/multi-inbound frontend.
 
 **Costs.** A daemon to run/supervise (one service, replaces the per-collection fleet); one
-network hop per query; adapter authors must keep the `Searcher` port honest; async `embed`
-adds a second embed path to maintain in the OpenAI adapter.
+network hop per query; adapter authors must keep the `Searcher` port honest; each embed
+costs one `spawn_blocking` thread-hop (negligible at tens of users; the embedder stays
+single-pathed). `Retry-After` is conveyed at the HTTP boundary only — the thin CLI/MCP
+clients flatten daemon errors (JSON-RPC has no retry-after notion), so automated backoff is
+an HTTP-client concern, not surfaced to the model/terminal.
 
 ## Further reading (local library)
 

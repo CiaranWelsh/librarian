@@ -1,32 +1,25 @@
-//! `Server` — the JSON-RPC handler. Stateless wrt the protocol; keeps a
-//! Qdrant indexer + manifest store open for the lifetime of the process.
+//! `Server` — the JSON-RPC handler. Stateless wrt the protocol. Each tool call
+//! is translated into an HTTP request to the query daemon; this adapter holds
+//! no query logic of its own.
 
-use adapter_indexer_qdrant::QdrantIndexer;
-use adapter_manifest_sqlite::{distinct_ingested_sources, SqliteManifest};
-use librarian_domain::SourceId;
 use serde_json::{json, Value};
 
-use crate::config::{embed_query, embedder_dim, Config};
+use crate::config::load;
 use crate::tools::tool_specs;
 
 pub struct Server {
-    cfg: Config,
-    indexer: QdrantIndexer,
-    manifest: SqliteManifest,
+    collection: String,
+    daemon_url: String,
+    http: reqwest::blocking::Client,
 }
 
 impl Server {
     pub fn open(config_path: &std::path::Path) -> Result<Self, String> {
-        let s = std::fs::read_to_string(config_path).map_err(|e| format!("config io: {e}"))?;
-        let cfg: Config = toml::from_str(&s).map_err(|e| format!("config parse: {e}"))?;
-        let dim = embedder_dim(&cfg.embedder);
-        let indexer = QdrantIndexer::open(&cfg.qdrant.url, &cfg.collection, dim)
-            .map_err(|e| e.to_string())?;
-        let manifest = SqliteManifest::open(&cfg.paths.manifest).map_err(|e| e.to_string())?;
+        let cfg = load(config_path)?;
         Ok(Self {
-            cfg,
-            indexer,
-            manifest,
+            collection: cfg.collection,
+            daemon_url: cfg.daemon_url.trim_end_matches('/').to_string(),
+            http: reqwest::blocking::Client::new(),
         })
     }
 
@@ -35,7 +28,9 @@ impl Server {
         let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let params = msg.get("params").cloned().unwrap_or(Value::Null);
 
-        // Notifications carry no id and need no reply (e.g. notifications/initialized).
+        // Notification: no id, no reply (e.g. notifications/initialized). `id` is
+        // reused by reference below, so an early guard reads clearer than `?`.
+        #[allow(clippy::question_mark)]
         if id.is_none() {
             return None;
         }
@@ -75,30 +70,22 @@ impl Server {
     }
 
     fn tool_search(&self, args: &Value) -> Result<Value, String> {
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or("query required")?;
-        let k = args.get("k").and_then(|v| v.as_u64()).unwrap_or(5);
-        let filter = args.get("content_type").and_then(|v| v.as_str());
-        let qv = embed_query(&self.cfg.embedder, query)?;
-        let hits = self
-            .indexer
-            .search(&qv, k, filter)
-            .map_err(|e| e.to_string())?;
-        Ok(json!({
-            "hits": hits.iter().map(|h| json!({
-                "score": h.score, "source_id": h.source_id, "chunk_index": h.chunk_index,
-                "content_type": h.content_type, "text": h.text,
-            })).collect::<Vec<_>>()
-        }))
+        let (path, body) = build_search(&self.collection, args);
+        self.post(path, body)
     }
 
     fn tool_list_documents(&self) -> Result<Value, String> {
-        let ids = distinct_ingested_sources(&self.manifest).map_err(|e| e.to_string())?;
-        Ok(json!({
-            "documents": ids.iter().map(|id| json!({ "source_id": id.0 })).collect::<Vec<_>>()
-        }))
+        let raw = self.get(&format!("/v1/documents?collection={}", self.collection))?;
+        // The daemon returns {documents:[string]}; MCP contract is {documents:[{source_id}]}.
+        let ids = raw["documents"]
+            .as_array()
+            .ok_or_else(|| format!("unexpected documents response: {raw}"))?;
+        let docs: Vec<Value> = ids
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|id| json!({ "source_id": id }))
+            .collect();
+        Ok(json!({ "documents": docs }))
     }
 
     fn tool_get_extract(&self, args: &Value) -> Result<Value, String> {
@@ -106,18 +93,79 @@ impl Server {
             .get("source_id")
             .and_then(|v| v.as_str())
             .ok_or("source_id required")?;
-        let start = args.get("start").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        let end = args
-            .get("end")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(u32::MAX as u64) as u32;
-        let chunks = self
-            .indexer
-            .get_extract(&SourceId(sid.into()), start, end)
-            .map_err(|e| e.to_string())?;
-        Ok(json!({
+        let mut body = json!({
+            "collection": self.collection,
             "source_id": sid,
-            "chunks": chunks.iter().map(|(i, t)| json!({ "chunk_index": i, "text": t })).collect::<Vec<_>>(),
-        }))
+        });
+        if let Some(start) = args.get("start").and_then(|v| v.as_u64()) {
+            body["start"] = json!(start);
+        }
+        if let Some(end) = args.get("end").and_then(|v| v.as_u64()) {
+            body["end"] = json!(end);
+        }
+        self.post("/v1/extract", body)
+    }
+
+    fn post(&self, path: &str, body: Value) -> Result<Value, String> {
+        let resp = self
+            .http
+            .post(format!("{}{}", self.daemon_url, path))
+            .json(&body)
+            .send()
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let val: Value = resp.json().map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            let msg = val["error"]["message"].as_str().unwrap_or("daemon error");
+            return Err(format!("daemon {status}: {msg}"));
+        }
+        Ok(val)
+    }
+
+    fn get(&self, path: &str) -> Result<Value, String> {
+        let resp = self
+            .http
+            .get(format!("{}{}", self.daemon_url, path))
+            .send()
+            .map_err(|e| e.to_string())?;
+        let status = resp.status();
+        let val: Value = resp.json().map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            let msg = val["error"]["message"].as_str().unwrap_or("daemon error");
+            return Err(format!("daemon {status}: {msg}"));
+        }
+        Ok(val)
+    }
+}
+
+/// Pure builder for the `/v1/search` request body. Kept separate so the
+/// argument translation (MCP `k` → daemon `limit`, default 5) is unit-testable
+/// without a running daemon.
+fn build_search(collection: &str, args: &Value) -> (&'static str, Value) {
+    let mut body = json!({
+        "collection": collection,
+        "query": args.get("query").and_then(|v| v.as_str()).unwrap_or(""),
+        "limit": args.get("k").and_then(|v| v.as_u64()).unwrap_or(5),
+    });
+    if let Some(ct) = args.get("content_type").and_then(|v| v.as_str()) {
+        body["content_type"] = Value::from(ct);
+    }
+    ("/v1/search", body)
+}
+
+#[cfg(test)]
+mod adapter_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn search_tool_maps_to_daemon_search_body() {
+        let args = json!({"query": "alpha", "k": 7, "content_type": "book"});
+        let (path, body) = build_search("physics", &args);
+        assert_eq!(path, "/v1/search");
+        assert_eq!(body["collection"], "physics");
+        assert_eq!(body["query"], "alpha");
+        assert_eq!(body["limit"], 7);
+        assert_eq!(body["content_type"], "book");
     }
 }

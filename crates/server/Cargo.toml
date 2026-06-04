@@ -10,24 +10,14 @@ name = "librarian-collection"
 path = "src/main.rs"
 
 [dependencies]
-librarian-domain.workspace = true
-adapter-manifest-sqlite.workspace = true
-adapter-indexer-qdrant.workspace = true
-adapter-embedder-stub.workspace = true
-adapter-embedder-openai.workspace = true
-adapter-embedder-voyage.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 thiserror.workspace = true
+reqwest = { workspace = true }
 
 [dev-dependencies]
+query-daemon = { path = "../query-daemon", features = ["test-support"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 tempfile.workspace = true
-adapter-cache-mem.workspace = true
-adapter-chunker-blankline.workspace = true
-adapter-extractor-text.workspace = true
-adapter-cache-fs.workspace = true
-librarian-runner.workspace = true
-sha2.workspace = true
-hex.workspace = true

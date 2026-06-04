@@ -14,6 +14,7 @@ use std::process::ExitCode;
 use commands::audit::cmd_audit;
 use commands::ingest::cmd_ingest;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
+use commands::query::cmd_query;
 use commands::remove::cmd_remove;
 use commands::snapshot::{cmd_restore, cmd_snapshot};
 use commands::status::{cmd_fleet_status, cmd_status_collection};
@@ -76,6 +77,19 @@ enum Cmd {
         #[arg(long)]
         config: PathBuf,
     },
+    /// Query a collection via the running query daemon.
+    Query {
+        /// Collection name.
+        collection: String,
+        /// Query text.
+        query: String,
+        /// Max hits.
+        #[arg(long, default_value_t = 5)]
+        limit: u64,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -94,6 +108,12 @@ fn main() -> ExitCode {
         Cmd::Start { name, config } => cmd_start(&name, &config),
         Cmd::Stop { name } => cmd_stop(&name),
         Cmd::Restart { name, config } => cmd_restart(&name, &config),
+        Cmd::Query {
+            collection,
+            query,
+            limit,
+            daemon,
+        } => cmd_query(&daemon, &collection, &query, limit),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

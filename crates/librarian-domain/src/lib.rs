@@ -22,6 +22,7 @@ mod manifest;
 mod payload;
 mod provenance;
 mod quality;
+mod searcher;
 mod snapshotter;
 mod work;
 
@@ -44,5 +45,6 @@ pub use quality::{
     classify_name, classify_section, garble_signal, garble_text, GarbleConfig, GarbleSignal,
     QualityConfig, SectionConfig, SectionDecision,
 };
+pub use searcher::{CollectionInfo, ExtractChunk, Hit, SearchError, Searcher};
 pub use snapshotter::Snapshotter;
 pub use work::Work;
