@@ -15,6 +15,7 @@ use commands::audit::cmd_audit;
 use commands::extract::cmd_extract;
 use commands::health::cmd_health;
 use commands::ingest::cmd_ingest;
+use commands::judge::cmd_judge;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
 use commands::query::cmd_query;
 use commands::remove::cmd_remove;
@@ -127,6 +128,23 @@ enum Cmd {
         #[arg(long, default_value = "http://localhost:6700")]
         daemon: String,
     },
+    /// LLM context-relevance judge over a query's top-k chunks (issue 028, Tier 1).
+    /// The accurate on-demand RAG quality read. Needs `OPENAI_API_KEY`.
+    Judge {
+        /// Collection name.
+        collection: String,
+        /// Query text.
+        query: String,
+        /// Number of top chunks to judge.
+        #[arg(long, default_value_t = 5)]
+        k: u64,
+        /// Judge model (default gpt-4o-mini).
+        #[arg(long)]
+        model: Option<String>,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -165,6 +183,13 @@ fn main() -> ExitCode {
             history,
             daemon,
         } => cmd_health(&daemon, &collection, &golden, k, history.as_deref()),
+        Cmd::Judge {
+            collection,
+            query,
+            k,
+            model,
+            daemon,
+        } => cmd_judge(&daemon, &collection, &query, k, model.as_deref()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

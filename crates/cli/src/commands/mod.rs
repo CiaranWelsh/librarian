@@ -4,6 +4,7 @@ pub mod audit;
 pub mod extract;
 pub mod health;
 pub mod ingest;
+pub mod judge;
 pub mod lifecycle;
 pub mod query;
 pub mod remove;
