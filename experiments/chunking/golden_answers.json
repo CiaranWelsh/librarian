@@ -1,0 +1,17 @@
+[
+  {"q": "how does integration testing differ from end-to-end testing and when is each used", "relevant": ["Effective-Software-Testing", "Building-Microservices", "Microservices-Patterns"], "keywords": ["integration test"]},
+  {"q": "what is the testing pyramid", "relevant": ["Building-Microservices", "Effective-Software-Testing", "Microservices-Patterns"], "keywords": ["pyramid"]},
+  {"q": "explain property-based testing and when it is useful", "relevant": ["Effective-Software-Testing"], "keywords": ["property-based"]},
+  {"q": "what is mutation testing and what does it measure", "relevant": ["Effective-Software-Testing"], "keywords": ["mutation"]},
+  {"q": "what is the dependency inversion principle", "relevant": ["Agile-Software-Development"], "keywords": ["dependency inversion"]},
+  {"q": "how do ownership and borrowing prevent data races in Rust", "relevant": ["Programming-Rust"], "keywords": ["borrow"]},
+  {"q": "what is a trait in Rust and how does it differ from an interface", "relevant": ["Programming-Rust"], "keywords": ["trait"]},
+  {"q": "explain the saga pattern for distributed transactions in microservices", "relevant": ["Microservices-Patterns", "Building-Microservices"], "keywords": ["saga"]},
+  {"q": "what is a microservice and what are its tradeoffs", "relevant": ["Building-Microservices"], "keywords": ["microservice"]},
+  {"q": "explain the TCP three-way handshake", "relevant": ["Forouzan"], "keywords": ["handshake"]},
+  {"q": "what is a Kubernetes operator and when would you build one", "relevant": ["KubePatterns"], "keywords": ["operator"]},
+  {"q": "how does a hash table achieve average constant-time lookup", "relevant": ["Introduction-to-Algorithms"], "keywords": ["hash"]},
+  {"q": "what is continuous integration and why does it matter", "relevant": ["React-Application", "Building-Microservices"], "keywords": ["continuous integration"]},
+  {"q": "how does GPU memory coalescing improve kernel performance", "relevant": ["GPU-Computing-Gems"], "keywords": ["coalesc"]},
+  {"q": "what does SWEBOK cover about software requirements", "relevant": ["SWEBOK"], "keywords": ["requirement"]}
+]
