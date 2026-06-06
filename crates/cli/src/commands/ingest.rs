@@ -12,7 +12,7 @@ use adapter_embedder_voyage::{VoyageConfig, VoyageEmbedder};
 use adapter_extractor_code::CodeExtractor;
 use adapter_extractor_ebook::EbookExtractor;
 use adapter_extractor_html::HtmlExtractor;
-use adapter_extractor_pdf::PdfExtractor;
+use adapter_extractor_pdf::{MarkerConfig, PdfExtractor};
 use adapter_extractor_text::TextExtractor;
 use adapter_indexer_qdrant::QdrantIndexer;
 use adapter_manifest_sqlite::SqliteManifest;
@@ -25,6 +25,20 @@ use std::path::Path;
 
 use crate::config::{Config, EmbedderConfig, IngestConfig};
 use crate::docs::{collect_docs, print_outcomes};
+
+/// Build the PDF extractor with the `[ingest.marker]` knobs (issue 030) so constrained
+/// GPUs get their batch flags and the markdown can land somewhere durable.
+fn pdf_extractor(cfg: &Config) -> PdfExtractor {
+    let m = &cfg.ingest.marker;
+    PdfExtractor::new().with_config(MarkerConfig {
+        device: m.device.clone(),
+        recognition_batch_size: m.recognition_batch_size,
+        detection_batch_size: m.detection_batch_size,
+        layout_batch_size: m.layout_batch_size,
+        table_rec_batch_size: m.table_rec_batch_size,
+        output_dir: m.output_dir.clone(),
+    })
+}
 
 pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
     let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
@@ -48,7 +62,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
         )?,
         ("pdf", EmbedderConfig::Stub) => run_ingest(
             &cfg,
-            PdfExtractor::new(),
+            pdf_extractor(&cfg),
             chunker,
             StubEmbedder::new(),
             &docs,
@@ -95,7 +109,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = openai(model, *dimensions, *batch_size)?;
-            run_ingest(&cfg, PdfExtractor::new(), chunker, emb, &docs)?
+            run_ingest(&cfg, pdf_extractor(&cfg), chunker, emb, &docs)?
         }
         (
             "code",
@@ -151,7 +165,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
-            run_ingest(&cfg, PdfExtractor::new(), chunker, emb, &docs)?
+            run_ingest(&cfg, pdf_extractor(&cfg), chunker, emb, &docs)?
         }
         (
             "code",

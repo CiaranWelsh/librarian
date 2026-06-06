@@ -4,7 +4,7 @@ mod error;
 mod extractor;
 
 pub use error::PdfExtractError;
-pub use extractor::PdfExtractor;
+pub use extractor::{MarkerConfig, PdfExtractor};
 
 #[cfg(test)]
 mod tests {

@@ -74,6 +74,9 @@ pub struct IngestConfig {
     /// Recursive chunker overlap in characters (~10%).
     #[serde(default = "default_chunk_overlap")]
     pub chunk_overlap: usize,
+    /// `[ingest.marker]` — marker subprocess knobs for the pdf extractor (issue 030).
+    #[serde(default)]
+    pub marker: MarkerTomlConfig,
 }
 
 impl Default for IngestConfig {
@@ -84,8 +87,27 @@ impl Default for IngestConfig {
             chunker: default_chunker(),
             chunk_size: default_chunk_size(),
             chunk_overlap: default_chunk_overlap(),
+            marker: MarkerTomlConfig::default(),
         }
     }
+}
+
+/// Marker invocation knobs (issue 030). Batch sizes are CLI flags (marker ignores
+/// the env-var equivalents); `output_dir` makes the extracted markdown durable.
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct MarkerTomlConfig {
+    #[serde(default)]
+    pub device: Option<String>,
+    #[serde(default)]
+    pub recognition_batch_size: Option<u32>,
+    #[serde(default)]
+    pub detection_batch_size: Option<u32>,
+    #[serde(default)]
+    pub layout_batch_size: Option<u32>,
+    #[serde(default)]
+    pub table_rec_batch_size: Option<u32>,
+    #[serde(default)]
+    pub output_dir: Option<PathBuf>,
 }
 
 fn default_content_type() -> String {
@@ -166,4 +188,46 @@ pub enum ConfigError {
     Io(#[source] std::io::Error),
     #[error("config parse: {0}")]
     Parse(#[source] toml::de::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE: &str = r#"
+collection = "c"
+[qdrant]
+url = "http://localhost:6334"
+[paths]
+cache = "/tmp/cache"
+manifest = "/tmp/m.sqlite"
+[embedder]
+kind = "stub"
+"#;
+
+    #[test]
+    fn ingest_marker_table_parses() {
+        let toml = format!(
+            "{BASE}\n[ingest.marker]\ndevice = \"cuda\"\nrecognition_batch_size = 1\noutput_dir = \"/data/corpus/markdown/software/.marker\"\n"
+        );
+        let cfg: Config = toml::from_str(&toml).unwrap();
+        let m = &cfg.ingest.marker;
+        assert_eq!(m.device.as_deref(), Some("cuda"));
+        assert_eq!(m.recognition_batch_size, Some(1));
+        assert_eq!(
+            m.output_dir.as_deref(),
+            Some(std::path::Path::new(
+                "/data/corpus/markdown/software/.marker"
+            ))
+        );
+        assert_eq!(m.detection_batch_size, None);
+    }
+
+    #[test]
+    fn ingest_marker_defaults_to_empty() {
+        let cfg: Config = toml::from_str(BASE).unwrap();
+        let m = &cfg.ingest.marker;
+        assert!(m.device.is_none() && m.output_dir.is_none());
+        assert!(m.recognition_batch_size.is_none());
+    }
 }
