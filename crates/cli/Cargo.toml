@@ -20,6 +20,7 @@ adapter-extractor-pdf.workspace = true
 adapter-extractor-ebook.workspace = true
 adapter-extractor-html.workspace = true
 adapter-chunker-blankline.workspace = true
+adapter-chunker-recursive.workspace = true
 adapter-embedder-stub.workspace = true
 adapter-embedder-openai.workspace = true
 adapter-embedder-voyage.workspace = true
@@ -43,6 +44,7 @@ reqwest = { workspace = true }
 assert_cmd = "2"
 predicates = "3"
 tempfile.workspace = true
+mockito.workspace = true
 adapter-indexer-qdrant.workspace = true
 serde_json.workspace = true
 query-daemon = { path = "../query-daemon", features = ["test-support"] }

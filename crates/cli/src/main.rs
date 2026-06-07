@@ -12,7 +12,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use commands::audit::cmd_audit;
+use commands::extract::cmd_extract;
+use commands::health::cmd_health;
 use commands::ingest::cmd_ingest;
+use commands::judge::cmd_judge;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
 use commands::query::cmd_query;
 use commands::remove::cmd_remove;
@@ -90,6 +93,58 @@ enum Cmd {
         #[arg(long, default_value = "http://localhost:6700")]
         daemon: String,
     },
+    /// Read a contiguous chunk window from one source via the query daemon
+    /// (the read half of locate-then-extract; pair with `query`).
+    Extract {
+        /// Collection name.
+        collection: String,
+        /// Source id (the `source_id` from a `query` hit).
+        source_id: String,
+        /// First chunk index, inclusive.
+        #[arg(long, default_value_t = 0)]
+        start: u32,
+        /// Last chunk index, exclusive; defaults to start + 20.
+        #[arg(long)]
+        end: Option<u32>,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
+    /// Run the golden probe set against a collection and report retrieval health
+    /// (hit-rate@k, MRR, fragment-rate@5); append the run to a JSONL history (issue 028).
+    Health {
+        /// Collection name.
+        collection: String,
+        /// Golden probe set (JSON: `[{"q": ..., "relevant": [..]}]`).
+        #[arg(long)]
+        golden: PathBuf,
+        /// Top-k for hit-rate / MRR.
+        #[arg(long, default_value_t = 10)]
+        k: u64,
+        /// Optional JSONL history file to append this run to.
+        #[arg(long)]
+        history: Option<PathBuf>,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
+    /// LLM context-relevance judge over a query's top-k chunks (issue 028, Tier 1).
+    /// The accurate on-demand RAG quality read. Needs `OPENAI_API_KEY`.
+    Judge {
+        /// Collection name.
+        collection: String,
+        /// Query text.
+        query: String,
+        /// Number of top chunks to judge.
+        #[arg(long, default_value_t = 5)]
+        k: u64,
+        /// Judge model (default gpt-4o-mini).
+        #[arg(long)]
+        model: Option<String>,
+        /// Daemon base URL.
+        #[arg(long, default_value = "http://localhost:6700")]
+        daemon: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -114,6 +169,27 @@ fn main() -> ExitCode {
             limit,
             daemon,
         } => cmd_query(&daemon, &collection, &query, limit),
+        Cmd::Extract {
+            collection,
+            source_id,
+            start,
+            end,
+            daemon,
+        } => cmd_extract(&daemon, &collection, &source_id, start, end),
+        Cmd::Health {
+            collection,
+            golden,
+            k,
+            history,
+            daemon,
+        } => cmd_health(&daemon, &collection, &golden, k, history.as_deref()),
+        Cmd::Judge {
+            collection,
+            query,
+            k,
+            model,
+            daemon,
+        } => cmd_judge(&daemon, &collection, &query, k, model.as_deref()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

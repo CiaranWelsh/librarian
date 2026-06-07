@@ -1,0 +1,44 @@
+# Claude Agentic Search: Anthropic Guidance + Community Findings (task-conditioned usage)
+
+**Scope.** Round-1 settled single-query mechanics on the librarian (verbatim query > rewrite/HyDE, k=20 best / k=8 value point, quote-first, abstention contract). This note gathers Anthropic's published guidance and the wider community/academic literature on the *loop* question: when an agent should issue follow-up searches, how to prompt the search behaviour, and how usage strategy should vary by task. Findings below are organized to feed task-conditioned experiments.
+
+## 1. Anthropic's own heuristics (most authoritative)
+
+Anthropic's "How we built our multi-agent research system" gives concrete, quotable rules that map almost directly onto our problem.
+
+- **Effort scaling by task complexity** (embedded in the lead-agent prompt to stop it spawning 50 subagents for trivial queries): *"Simple fact-finding requires just 1 agent with 3-10 tool calls, direct comparisons might need 2-4 subagents with 10-15 calls each, and complex research might use more than 10 subagents with clearly divided responsibilities."* This is the strongest published quantitative anchor for *how many searches* a task warrants.
+- **Start broad, then narrow.** *"Search strategy should mirror expert human research: explore the landscape before drilling into specifics. Agents often default to overly long, specific queries that return few results."* Fix: prompt agents to *"start with short, broad queries, evaluate what's available, then progressively narrow focus."* (Note: this is for *web* search; round-1 found verbatim queries beat rewriting on our embedded corpus — the broad→narrow trajectory may interact differently with dense retrieval and is worth testing.)
+- **Interleaved/extended thinking as a gap-detector.** Subagents *"use interleaved thinking after tool results to evaluate quality, identify gaps, and refine their next query"*; the lead agent uses extended thinking as a *"controllable scratchpad"* to plan tool choice, query complexity, and subagent count. Extended thinking measurably improved instruction-following and efficiency.
+- **Breadth-first is where multi-search/parallelism wins.** Multi-agent setups *"excel especially for breadth-first queries that involve pursuing multiple independent directions simultaneously"*; the S&P-500-board-members example succeeded by decomposition where a sequential single agent failed.
+- **Cost is the tradeoff.** Agents use ~4x the tokens of chat; multi-agent ~15x. Token usage alone explained 80% of performance variance (with tool-call count and model choice making up 95%). The multi-agent system beat single-agent Opus 4 by **90.2%** on their internal research eval — but only justified for high-value breadth-first work.
+- **Tool-use prompting.** Teach usage by example, not just schema; give explicit tool-selection heuristics (examine all tools first; match tool to intent; prefer specialized over generic; *"an agent searching the web for context that only exists in Slack is doomed from the start"*). Each tool needs a distinct, clear description or the agent takes wrong turns.
+
+**Claude Code** (coding context) is the contrasting data point: Anthropic deliberately chose *agentic* grep/glob/read over RAG because *"agentic search outperformed [RAG] by a lot."* The win is iterative refinement (query → result → refined query) that single-shot retrieval cannot do. Coding uses needle-vs-broad routing: direct search for a known file/symbol, an isolated read-only Explore subagent for broad codebase questions to protect main context. Stopping is the documented failure mode — Claude *"stops when the work looks done"* unless given a runnable check (tests/build/screenshot). This argues that **per-task stopping signals** matter more than a universal one.
+
+## 2. Academic / community findings on the loop
+
+- **More searches ≠ better; over-search degrades.** LiveNewsBench shows clear diminishing returns and even regressions past a budget sweet spot — Claude Sonnet 4.5 dropped from 82% (budget 5) to 67% (budget 7). The FACTS Search benchmark notes the *highest*-scoring model (Gemini 3 Pro) searched *fewer* times on average. "Search Wisely" formalizes **over-search** (a retrieval step whose answer was already derivable from parametric knowledge + prior context) and **under-search** (a non-retrieval step that yields a wrong answer).
+- **Stopping is a forward-looking decision, not a sufficiency check.** Stop-RAG casts iterative RAG as a finite-horizon MDP with a value controller (STOP vs CONT), arguing confidence proxies poorly predict whether *another* retrieval will help — many irrelevant docs can distort a present-focused sufficiency signal. EviOmni's "4R" frames the goal: Reduce redundant context, Refuse when insufficient, be Robust to noise, and stop at the Right time. Probing-RAG/FLARE/DRAGIN use representation probes or token-uncertainty thresholds.
+- **Task type is itself a strong retrieval signal.** Adaptive-RAG routes by query complexity: no retrieval for simple, single retrieval for moderate, iterative multi-hop for complex. For multi-hop questions, *external* features (question type, context relevance) predicted retrieval need better than the model's own uncertainty. RAG reliably helps knowledge-intensive tasks but can *hurt* math/reasoning — retrieved entity/definitional knowledge often doesn't match the *procedural/solution-oriented* knowledge maths needs (GraphRAG caused slight regressions on maths for Qwen2.5-72B). This directly supports differentiating librarian usage across literature-synthesis vs maths vs science vs coding.
+- **Tool availability isn't the bottleneck — usage is.** InfoMosaic-Bench: extra domain tools gave only marginal gains; the limiting factor is *how* agents plan, select, parameterize and time calls. SeekBench argues plain accuracy hides this, advocating process-level traces (reasoning/search/evidence/answer steps).
+
+## 3. Actionable implications for task-conditioned librarian experiments
+
+1. **Build a task-typed query set** (literature-synthesis, maths/derivation, physics/science fact, writing, coding/API, learning) and measure *per-task* the optimal #searches, refinement trajectory, and breadth-vs-depth — do not assume one policy. Use Adaptive-RAG's complexity tiers (0 / 1 / multi-hop) as the routing baseline.
+2. **Test the broad→narrow trajectory against round-1's verbatim-query result.** Anthropic's broad-first heuristic is web-search advice; on text-embedding-3-large + qdrant it may underperform. Run: (a) verbatim single, (b) broad-then-narrow multi, (c) decompose-then-parallel — scored per task type.
+3. **Instrument over-/under-search explicitly** (per "Search Wisely"): label each follow-up as redundant (answer already in context) or necessary. Track the LiveNewsBench-style budget curve per task to locate each task's degradation point, not just a global one.
+4. **Make the abstention contract a forward-looking stopping rule.** Round-1's abstention killed hallucination; extend it to "is another query likely to help?" (Stop-RAG / EviOmni 4R) rather than "is current evidence sufficient?" — using the confidence label the CLI already returns as the control signal.
+5. **Use interleaved thinking between librarian calls** as the gap-detector: require the agent to write what's missing before issuing a follow-up, and only re-query against the named gap. Measure whether this cuts redundant searches without hurting recall.
+6. **Differentiate stopping signals by task** (mirroring Claude Code): coding/maths tasks have a verifiable check (compiles, derivation closes); synthesis/writing tasks need a coverage/saturation heuristic instead. Budget more searches only for breadth-first synthesis where the ~15x-cost tradeoff pays off.
+
+## Sources
+- Anthropic, *How we built our multi-agent research system* — anthropic.com/engineering/multi-agent-research-system
+- Anthropic, *Introducing advanced tool use on the Claude Developer Platform* — anthropic.com/engineering/advanced-tool-use
+- Anthropic, *Best practices for Claude Code* / *How Claude Code works* — code.claude.com/docs
+- Stop-RAG: Value-Based Retrieval Control for Iterative RAG — arXiv:2510.14337
+- Search Wisely: Mitigating Sub-optimal Agentic Searches By Reducing Uncertainty — arXiv:2505.17281
+- Scaling Search-Augmented LLM Reasoning via Adaptive Information Control — arXiv:2602.01672
+- Learning to Extract Rational Evidence via RL for RAG (EviOmni) — arXiv:2507.15586
+- Adaptive-RAG / RetrievalQA / Self-RAG / FLARE / CRAG (adaptive-retrieval line) — reachsumit.com "Deciding When Not to Retrieve"; arXiv:2402.16457
+- RAG+: Application-Aware Reasoning — arXiv:2506.11555 (maths regression finding)
+- LiveNewsBench (arXiv:2602.13543), FACTS Search Leaderboard (arXiv:2512.10791), InfoMosaic-Bench (arXiv:2510.02271), SeekBench / epistemic-competence benchmark (arXiv:2509.22391)

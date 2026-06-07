@@ -36,6 +36,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "adapter-chunker-recursive"
+version = "1.0.0"
+dependencies = [
+ "librarian-domain",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "adapter-embedder-fallback"
 version = "1.0.0"
 dependencies = [
@@ -1317,6 +1327,7 @@ dependencies = [
  "adapter-cache-fs",
  "adapter-chunker-blankline",
  "adapter-chunker-code",
+ "adapter-chunker-recursive",
  "adapter-embedder-fallback",
  "adapter-embedder-openai",
  "adapter-embedder-stub",
@@ -1335,6 +1346,7 @@ dependencies = [
  "libc",
  "librarian-domain",
  "librarian-runner",
+ "mockito",
  "predicates",
  "query-daemon",
  "reqwest",

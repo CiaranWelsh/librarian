@@ -4,8 +4,8 @@
 
 use librarian_domain::{
     cache_key, classify_section, garble_signal, AdapterIdentity, Cache, CacheKey, Chunk, Chunker,
-    Document, Embedder, ExtractedText, Extractor, Indexer, ManifestStatus, ManifestStore,
-    QualityConfig, SectionDecision, SourceHash, SourceId, Vector,
+    ConfigHash, Document, Embedder, ExtractedText, Extractor, Indexer, ManifestStatus,
+    ManifestStore, QualityConfig, SectionDecision, SourceHash, SourceId, Vector,
 };
 
 use crate::pipeline::{link, Pipeline};
@@ -153,7 +153,20 @@ where
         }
 
         // ── embed ──
-        let embed_key = key_for(sh, &self.pipeline.embedder);
+        // The embed cache must reflect the chunk-set it embeds, not just the source +
+        // embedder. `chunk_key` identifies (source, chunker), so folding it into the embed
+        // key means a chunker change invalidates embed too — otherwise re-chunking serves
+        // stale vectors and the index stage rejects the count mismatch (issue 028 cache bug).
+        let embed_key = cache_key::derive(
+            sh,
+            self.pipeline.embedder.name(),
+            &self.pipeline.embedder.version(),
+            &ConfigHash(format!(
+                "{};chunks={}",
+                self.pipeline.embedder.config_hash().0,
+                chunk_key.0
+            )),
+        );
         let vectors: Vec<Vector> = match self.lookup(&embed_key) {
             Some(v) => {
                 self.record(sid, "embed", ManifestStatus::Cached, None, Some(&embed_key));

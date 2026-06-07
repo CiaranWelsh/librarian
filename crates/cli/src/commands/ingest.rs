@@ -3,24 +3,42 @@
 //! `BatchRunner` around it. No `Box<dyn Trait>` (per memory rule).
 
 use adapter_cache_fs::FsCache;
-use adapter_chunker_blankline::BlankLineChunker;
+use adapter_chunker_blankline::{BlankLineChunkError, BlankLineChunker};
 use adapter_chunker_code::CodeChunker;
+use adapter_chunker_recursive::{RecursiveChunkError, RecursiveChunker};
 use adapter_embedder_openai::{OpenAiConfig, OpenAiEmbedder};
 use adapter_embedder_stub::StubEmbedder;
 use adapter_embedder_voyage::{VoyageConfig, VoyageEmbedder};
 use adapter_extractor_code::CodeExtractor;
 use adapter_extractor_ebook::EbookExtractor;
 use adapter_extractor_html::HtmlExtractor;
-use adapter_extractor_pdf::PdfExtractor;
+use adapter_extractor_pdf::{MarkerConfig, PdfExtractor};
 use adapter_extractor_text::TextExtractor;
 use adapter_indexer_qdrant::QdrantIndexer;
 use adapter_manifest_sqlite::SqliteManifest;
-use librarian_domain::{Chunker, Document, Embedder, Extractor};
+use librarian_domain::{
+    AdapterIdentity, Chunk, Chunker, ConfigHash, Document, Embedder, ExtractedText, Extractor,
+    StageVersion,
+};
 use librarian_runner::{BatchRunner, Outcome, Pipeline};
 use std::path::Path;
 
-use crate::config::{Config, EmbedderConfig};
+use crate::config::{Config, EmbedderConfig, IngestConfig};
 use crate::docs::{collect_docs, print_outcomes};
+
+/// Build the PDF extractor with the `[ingest.marker]` knobs (issue 030) so constrained
+/// GPUs get their batch flags and the markdown can land somewhere durable.
+fn pdf_extractor(cfg: &Config) -> PdfExtractor {
+    let m = &cfg.ingest.marker;
+    PdfExtractor::new().with_config(MarkerConfig {
+        device: m.device.clone(),
+        recognition_batch_size: m.recognition_batch_size,
+        detection_batch_size: m.detection_batch_size,
+        layout_batch_size: m.layout_batch_size,
+        table_rec_batch_size: m.table_rec_batch_size,
+        output_dir: m.output_dir.clone(),
+    })
+}
 
 pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
     let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
@@ -30,32 +48,36 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
         return Ok(());
     }
 
+    // Chunker for text content (code always uses CodeChunker). Built once; the match arms
+    // below move it into the chosen pipeline.
+    let chunker = select_chunker(&cfg.ingest)?;
+
     let outcomes = match (cfg.ingest.extractor.as_str(), &cfg.embedder) {
         ("text", EmbedderConfig::Stub) => run_ingest(
             &cfg,
             TextExtractor::new(),
-            BlankLineChunker::new(),
+            chunker,
             StubEmbedder::new(),
             &docs,
         )?,
         ("pdf", EmbedderConfig::Stub) => run_ingest(
             &cfg,
-            PdfExtractor::new(),
-            BlankLineChunker::new(),
+            pdf_extractor(&cfg),
+            chunker,
             StubEmbedder::new(),
             &docs,
         )?,
         ("ebook", EmbedderConfig::Stub) => run_ingest(
             &cfg,
             EbookExtractor::new(),
-            BlankLineChunker::new(),
+            chunker,
             StubEmbedder::new(),
             &docs,
         )?,
         ("html", EmbedderConfig::Stub) => run_ingest(
             &cfg,
             HtmlExtractor::new(),
-            BlankLineChunker::new(),
+            chunker,
             StubEmbedder::new(),
             &docs,
         )?,
@@ -76,13 +98,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = openai(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                TextExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, TextExtractor::new(), chunker, emb, &docs)?
         }
         (
             "pdf",
@@ -93,13 +109,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = openai(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                PdfExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, pdf_extractor(&cfg), chunker, emb, &docs)?
         }
         (
             "code",
@@ -121,13 +131,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = openai(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                EbookExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, EbookExtractor::new(), chunker, emb, &docs)?
         }
         (
             "html",
@@ -138,13 +142,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = openai(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                HtmlExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, HtmlExtractor::new(), chunker, emb, &docs)?
         }
 
         (
@@ -156,13 +154,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                TextExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, TextExtractor::new(), chunker, emb, &docs)?
         }
         (
             "pdf",
@@ -173,13 +165,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                PdfExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, pdf_extractor(&cfg), chunker, emb, &docs)?
         }
         (
             "code",
@@ -201,13 +187,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                EbookExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, EbookExtractor::new(), chunker, emb, &docs)?
         }
         (
             "html",
@@ -218,13 +198,7 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
             },
         ) => {
             let emb = voyage(model, *dimensions, *batch_size)?;
-            run_ingest(
-                &cfg,
-                HtmlExtractor::new(),
-                BlankLineChunker::new(),
-                emb,
-                &docs,
-            )?
+            run_ingest(&cfg, HtmlExtractor::new(), chunker, emb, &docs)?
         }
 
         (kind, _) => return Err(format!("unsupported extractor: {kind}")),
@@ -238,6 +212,66 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Runtime chunker selection via enum dispatch (no `Box<dyn>`, per project rule). Code
+/// content always uses `CodeChunker`; text content chooses between the recursive (issue 027)
+/// and legacy blank-line chunkers via `[ingest] chunker`.
+enum SelectedChunker {
+    BlankLine(BlankLineChunker),
+    Recursive(RecursiveChunker),
+}
+
+#[derive(Debug, thiserror::Error)]
+enum SelectedChunkError {
+    #[error(transparent)]
+    BlankLine(#[from] BlankLineChunkError),
+    #[error(transparent)]
+    Recursive(#[from] RecursiveChunkError),
+}
+
+impl AdapterIdentity for SelectedChunker {
+    fn name(&self) -> &str {
+        match self {
+            SelectedChunker::BlankLine(c) => c.name(),
+            SelectedChunker::Recursive(c) => c.name(),
+        }
+    }
+    fn version(&self) -> StageVersion {
+        match self {
+            SelectedChunker::BlankLine(c) => c.version(),
+            SelectedChunker::Recursive(c) => c.version(),
+        }
+    }
+    fn config_hash(&self) -> ConfigHash {
+        match self {
+            SelectedChunker::BlankLine(c) => c.config_hash(),
+            SelectedChunker::Recursive(c) => c.config_hash(),
+        }
+    }
+}
+
+impl Chunker for SelectedChunker {
+    type Error = SelectedChunkError;
+    fn chunk(&self, doc: &Document, text: ExtractedText) -> Result<Vec<Chunk>, Self::Error> {
+        match self {
+            SelectedChunker::BlankLine(c) => Ok(c.chunk(doc, text)?),
+            SelectedChunker::Recursive(c) => Ok(c.chunk(doc, text)?),
+        }
+    }
+}
+
+fn select_chunker(cfg: &IngestConfig) -> Result<SelectedChunker, String> {
+    match cfg.chunker.as_str() {
+        "blankline" => Ok(SelectedChunker::BlankLine(BlankLineChunker::new())),
+        "recursive" => Ok(SelectedChunker::Recursive(RecursiveChunker::with_budget(
+            cfg.chunk_size,
+            cfg.chunk_overlap,
+        ))),
+        other => Err(format!(
+            "unknown chunker '{other}' (expected 'recursive' or 'blankline')"
+        )),
+    }
 }
 
 fn openai(

@@ -25,3 +25,10 @@ htmlcov/
 *.qdrant-snapshot
 local_cache/
 scratch/
+
+# Python
+__pycache__/
+*.pyc
+
+# Research reference PDFs (large, downloadable; cited by link in FINDINGS.md)
+docs/research/**/*.pdf
