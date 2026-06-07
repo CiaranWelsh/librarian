@@ -1,0 +1,34 @@
+# Theory-to-Code Workflows: How Engineers Use Papers While Implementing Algorithms
+
+**Task-conditioning question:** when the work is *implementing an algorithm from a paper*, how should an AI assistant drive the librarian differently from literature synthesis or fact-lookup? The implementation literature is unusually prescriptive about reading order, equation-to-code mapping, and *repeated* consultation — and it maps cleanly onto retrieval strategy.
+
+## Key findings
+
+**1. Reading order is non-linear and staged — never front-to-back.** Keshav's canonical *three-pass method* (ACM SIGCOMM CCR 2007, 15 years of practice) is the dominant model: pass 1 (5–10 min) reads title/abstract/intro, section headings, glances at the math to identify foundations, reads conclusions; pass 2 (~1 hr) engages figures/diagrams and the argument; pass 3 (4–5 hr) achieves "virtual re-implementation" by re-deriving the authors' work [richardmathewsii.substack.com; hku.hk; missouri.edu]. **Implication for retrieval:** the assistant should *not* try to ingest a method in one query. Triage-first (cheap, broad) then deepen only on the section that gets re-read — the "Approach in Details" section, which practitioners say "you are going to come back to again and again while coding" [medium.com/geekculture].
+
+**2. The load-bearing work is equation-to-code translation, and notation is the trap.** The Code Capsule canonical guide states the implementer "must understand 100% of the equations" before coding, and that the core task is *translating math into code and data* [codecapsule.com]. The dominant failure mode is ambiguous notation: a single symbol (`C = A·B`) can mean scalar product, matrix product, or element-wise product — "you must make sure you know what each variable is (scalar, vector, matrix) and what every operator is doing" [codecapsule.com]. Empirically, the *science-software linkage* study (arXiv:2104.05891) found that of code comments referencing papers, **~30% implement a formula/equation and ~19% implement pseudocode** — equations dominate, so notation disambiguation is the highest-frequency retrieval need. (That paper is otherwise a position paper; it does not quantify traceability coverage.)
+
+**3. A paper is a pipeline, not a bag of facts — consultation is repeated and state-dependent.** "A paper is a succession of equations… you must know how you will plug the output of equation N into the input of equation N+1" [codecapsule.com]. Development is *bottom-up even though design is top-down*: the Bayesian Workflow guidance (arXiv:2011.01808) says software design proceeds top-down from goals but *development* proceeds "bottom up from well-tested foundational functions… at each stage building only on tested pieces." This is precisely the **iterative/agentic-RAG** pattern: later retrievals depend on intermediate generation state (ITER-RETGEN's "retrieval→generation→retrieval" loop; the agentic-RAG taxonomy distinguishing one-shot vs iterative vs self-refining retrieval) [arXiv:2603.07379]. ARCS (arXiv:2504.20434) operationalises a budgeted *retrieve→synthesize→execute→repair* loop and reaches 87.2% pass@1 on HumanEval, beating CodeAgent (82.3%) with simpler control.
+
+**4. More retrieval is not monotonically better — but coding tolerates more depth than fact-lookup.** "When More Retrieval Hurts" (arXiv:2511.05302) shows retrieval quality degrades when relevant signal is diluted; selective retrieval / context compression beats max-k under tight prompts. This nuances our Round-1 result (k=20 best, k=8 value point): for *implementation* a high-k single pull is the wrong shape — better is several *targeted* pulls (one per equation/sub-component), each small, because the implementer reads one section repeatedly rather than the whole method at once.
+
+**5. Validation is part of the workflow — test against the paper's own numbers.** The reliable pattern is to reproduce the paper's *intermediate* values (worked numerical example) so a later divergence localises to new, untested code [Bayesian Workflow; medium/aman.rangapur]. Practitioners also warn to skip proof/theory math not needed for implementation ("give yourself permission to skip these equations") [medium/artofsaience] — a strong stopping signal.
+
+## Actionable implications for librarian usage experiments
+
+1. **Test a multi-pull "decomposition" strategy vs one high-k pull.** Hypothesis: for coding tasks, N small targeted queries (one per equation/component, k≈8) beat one k=20 pull — mirroring three-pass + bottom-up. Measure: correctness of generated code + faithfulness to source notation.
+2. **Add a notation-disambiguation query type.** Since ~30% of paper-grounded code implements equations and notation is the top failure mode, instrument a dedicated "what does symbol/operator X mean here" retrieval and measure whether it cuts equation-mapping errors.
+3. **Make retrieval iterative and state-dependent for coding tasks.** Allow re-query conditioned on partial implementation (ITER-RETGEN / ARCS pattern), with a budget. Compare one-shot vs iterative vs self-refining on a fixed implementation benchmark.
+4. **Define a coding-specific stopping rule.** Stop when every equation in the data-flow chain has a grounded mapping (not when a token budget is hit). Operationalise the "skip proof math" heuristic as an explicit abstain/skip label so the assistant doesn't over-retrieve theory.
+5. **Use intermediate-value reproduction as the eval oracle.** Score implementation tasks by whether generated code reproduces the paper's worked numerical example, not just final output — gives a localisable, per-component correctness signal analogous to bottom-up testing.
+6. **Condition breadth-vs-depth on task type.** Literature synthesis → broad/shallow, high-k, one pass; implementation → narrow/deep, low-k per pull, many state-dependent passes over the same method section. This is the core task-conditioning axis to validate.
+
+## Sources
+- Keshav, *How to Read a Paper*, ACM SIGCOMM CCR 2007 — three-pass method, time budgets, 5 C's [missouri.edu PDF; richardmathewsii.substack.com; blog-sc.hku.hk]
+- Code Capsule, *How to implement an algorithm from a scientific paper* — equations-first, notation ambiguity, equation pipeline [codecapsule.com]
+- arXiv:2104.05891 *Science-Software Linkage* — ~30% equation / ~19% pseudocode in paper-referencing code comments
+- arXiv:2011.01808 *Bayesian Workflow* — top-down design / bottom-up development; test on well-tested foundations
+- arXiv:2603.07379 *SoK: Agentic RAG* — one-shot vs iterative vs self-refining retrieval taxonomy
+- arXiv:2504.20434 *ARCS* — budgeted retrieve-synthesize-execute-repair loop, 87.2% pass@1 HumanEval
+- arXiv:2511.05302 *When More Retrieval Hurts* — selective retrieval beats max-k under tight context
+- medium/geekculture, medium/artofsaience, medium/aman.rangapur — practitioner deconstruction passes; skip proof math; reproduce numerical examples
