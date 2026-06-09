@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use adapter_indexer_qdrant::QdrantSearcher;
 use query_core::QueryService;
+use query_daemon::auth::AuthState;
 use query_daemon::config::{AppEmbedder, DaemonConfig};
 use query_daemon::{router, AppState};
 
@@ -38,7 +39,12 @@ fn run() -> Result<(), String> {
     let embedder = AppEmbedder::from_cfg(&cfg.embedder)?;
     let searcher = QdrantSearcher::open(&cfg.qdrant_url).map_err(|e| e.to_string())?;
     let svc = QueryService::new(Arc::new(embedder), searcher, cfg.max_concurrent_embeds);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let keys_path = match &cfg.keys_path {
+        Some(p) => PathBuf::from(p),
+        None => default_keys_path()?,
+    };
+    let auth = Arc::new(AuthState::new(keys_path));
+    let app = router(AppState { svc: Arc::new(svc) }, auth);
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async move {
@@ -62,6 +68,13 @@ fn default_config_path() -> Result<PathBuf, String> {
     let home =
         std::env::var("HOME").map_err(|_| "HOME not set; pass --config <path>".to_string())?;
     Ok(PathBuf::from(home).join(".librarian").join("serve.toml"))
+}
+
+/// keys.toml path when not set in config: `~/.librarian/keys.toml`.
+fn default_keys_path() -> Result<PathBuf, String> {
+    let home =
+        std::env::var("HOME").map_err(|_| "HOME not set; set keys_path in config".to_string())?;
+    Ok(PathBuf::from(home).join(".librarian").join("keys.toml"))
 }
 
 /// Resolve when the process receives Ctrl-C, letting axum drain in-flight

@@ -4,8 +4,10 @@
 
 use std::sync::Arc;
 
+use axum::extract::Request;
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -17,6 +19,9 @@ use query_core::{
     retrieval_confidence, ConfidenceLabel, QueryError, QueryService, RetrievalConfidence,
 };
 
+use crate::auth::{AuthReject, AuthState};
+
+pub mod auth;
 pub mod config;
 
 #[cfg(feature = "test-support")]
@@ -34,18 +39,57 @@ impl<E, S> Clone for AppState<E, S> {
     }
 }
 
-pub fn router<E, S>(state: AppState<E, S>) -> Router
+pub fn router<E, S>(state: AppState<E, S>, auth: Arc<AuthState>) -> Router
 where
     E: Embedder + Send + Sync + 'static,
     S: Searcher + Send + Sync + 'static,
 {
-    Router::new()
-        .route("/healthz", get(healthz))
+    // /v1/* require a valid bearer key (issue 032); /healthz stays open for monitoring.
+    let protected = Router::new()
         .route("/v1/collections", get(collections::<E, S>))
         .route("/v1/search", post(search::<E, S>))
         .route("/v1/documents", get(documents::<E, S>))
         .route("/v1/extract", post(extract::<E, S>))
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(auth, auth_mw))
+        .with_state(state);
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(protected)
+}
+
+/// Extract the bearer token from `Authorization: Bearer <token>`.
+fn bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+}
+
+/// Auth + rate-limit middleware for `/v1/*` (issue 032). On success the resolved `Identity` is
+/// stashed in request extensions for downstream logging (issue 033).
+async fn auth_mw(State(auth): State<Arc<AuthState>>, mut req: Request, next: Next) -> Response {
+    match auth.check(bearer(req.headers())) {
+        Ok(id) => {
+            req.extensions_mut().insert(id);
+            next.run(req).await
+        }
+        Err(AuthReject::Unauthorized) => ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "missing or invalid bearer key".into(),
+            retry_after: None,
+        }
+        .into_response(),
+        Err(AuthReject::RateLimited(secs)) => ApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: "rate limit exceeded".into(),
+            retry_after: Some(secs),
+        }
+        .into_response(),
+    }
 }
 
 // ---- error -> HTTP (ADR-0005 table) -------------------------------------
