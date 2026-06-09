@@ -29,6 +29,7 @@ adapter-extractor-code.workspace = true
 adapter-chunker-code.workspace = true
 adapter-snapshotter-qdrant-nas.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 serde.workspace = true
 toml.workspace = true
 walkdir.workspace = true
