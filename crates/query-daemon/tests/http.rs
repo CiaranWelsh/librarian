@@ -11,8 +11,13 @@ use librarian_domain::{
     Provenance, SourceId, StageVersion, Vector,
 };
 use query_core::QueryService;
+use query_daemon::auth::AuthState;
 use query_daemon::{router, AppState};
 use tower::ServiceExt; // oneshot
+
+fn auth() -> Arc<AuthState> {
+    Arc::new(AuthState::single_key("test", "t"))
+}
 
 fn book_chunk(source: &str, idx: u32, text: &str) -> Chunk {
     Chunk {
@@ -44,7 +49,7 @@ fn test_app() -> axum::Router {
     let apple = stub.embed(&["apple"]).unwrap().remove(0);
     mem.add("c", book_chunk("apple", 0, "apple body"), apple);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    router(AppState { svc: Arc::new(svc) })
+    router(AppState { svc: Arc::new(svc) }, auth())
 }
 
 // ---- plan tests ----------------------------------------------------------
@@ -59,9 +64,20 @@ async fn healthz_ok() {
 }
 
 #[tokio::test]
+async fn v1_requires_bearer_key() {
+    // fail-closed (issue 032): no Authorization header -> 401 before the handler runs.
+    let req = Request::post("/v1/search")
+        .body(Body::from(r#"{"collection":"c","query":"apple"}"#))
+        .unwrap();
+    let resp = test_app().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn search_returns_hits() {
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(
             r#"{"collection":"c","query":"apple","limit":5}"#,
         ))
@@ -77,6 +93,7 @@ async fn search_response_includes_confidence() {
     // Tier 0 (issue 028): every search carries a retrieval-confidence object.
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(
             r#"{"collection":"c","query":"apple","limit":5}"#,
         ))
@@ -109,11 +126,12 @@ async fn confidence_is_no_answer_on_empty_result() {
     let v = stub.embed(&["apple"]).unwrap().remove(0);
     mem.add("col", book_chunk("apple", 0, "apple body"), v);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let app = router(AppState { svc: Arc::new(svc) }, auth());
 
     // content_type=paper matches nothing → zero hits → LikelyNoAnswer.
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(
             r#"{"collection":"col","query":"apple","content_type":"paper"}"#,
         ))
@@ -129,6 +147,7 @@ async fn confidence_is_no_answer_on_empty_result() {
 async fn empty_query_is_400() {
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"c","query":"  "}"#))
         .unwrap();
     let resp = test_app().oneshot(req).await.unwrap();
@@ -141,6 +160,7 @@ async fn empty_query_is_400() {
 async fn unknown_collection_is_404() {
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"missing","query":"apple"}"#))
         .unwrap();
     let resp = test_app().oneshot(req).await.unwrap();
@@ -152,6 +172,7 @@ async fn documents_lists_sources() {
     let resp = test_app()
         .oneshot(
             Request::get("/v1/documents?collection=c")
+                .header("authorization", "Bearer test")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -176,10 +197,11 @@ async fn extract_returns_chunks() {
         );
     }
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let app = router(AppState { svc: Arc::new(svc) }, auth());
 
     let req = Request::post("/v1/extract")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"demo","source_id":"paper"}"#))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -204,10 +226,11 @@ async fn limit_defaults_to_five() {
         mem.add("col", book_chunk(&format!("doc{i}"), 0, "body"), v);
     }
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let app = router(AppState { svc: Arc::new(svc) }, auth());
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"col","query":"doc0"}"#))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
@@ -224,10 +247,11 @@ async fn empty_result_is_200_not_404() {
     // seed a book chunk; then search with content_type=paper (no papers exist)
     mem.add("col", book_chunk("apple", 0, "apple body"), v);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let app = router(AppState { svc: Arc::new(svc) }, auth());
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(
             r#"{"collection":"col","query":"apple","content_type":"paper"}"#,
         ))
@@ -242,6 +266,7 @@ async fn empty_result_is_200_not_404() {
 async fn not_found_envelope_has_code_and_message() {
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"nope","query":"x"}"#))
         .unwrap();
     let resp = test_app().oneshot(req).await.unwrap();
@@ -279,10 +304,11 @@ async fn recoverable_embed_is_503_with_retry_after() {
     let mem = MemSearcher::new();
     mem.add("col", book_chunk("doc", 0, "body"), vec![1.0_f32; 4]);
     let svc = QueryService::new(Arc::new(RecoverableEmbedder), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) });
+    let app = router(AppState { svc: Arc::new(svc) }, auth());
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
         .body(Body::from(r#"{"collection":"col","query":"x"}"#))
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();

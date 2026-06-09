@@ -32,9 +32,7 @@ pub fn cmd_extract(
     let end = end.unwrap_or(start + 20);
     let (url, body) = extract_request(daemon, collection, source_id, start, end);
     let client = reqwest::blocking::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&body)
+    let resp = crate::commands::query::with_auth(client.post(&url).json(&body))
         .send()
         .map_err(|e| format!("request failed: {e}"))?;
     let status = resp.status();

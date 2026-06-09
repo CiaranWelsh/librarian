@@ -14,6 +14,15 @@ pub fn search_request(
     (url, body)
 }
 
+/// Attach `Authorization: Bearer $LIBRARIAN_KEY` when the env var is set (issue 032). Omitted
+/// on the local tailnet where no key is configured; required once the daemon has keys.toml.
+pub fn with_auth(req: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+    match std::env::var("LIBRARIAN_KEY") {
+        Ok(k) if !k.is_empty() => req.bearer_auth(k),
+        _ => req,
+    }
+}
+
 /// POST a search to the daemon and return the parsed JSON response, mapping the daemon's
 /// error envelope to an `Err`. Shared by `query`, `health`, and `judge`.
 pub fn fetch_search(
@@ -24,9 +33,7 @@ pub fn fetch_search(
 ) -> Result<serde_json::Value, String> {
     let (url, body) = search_request(daemon, collection, query, limit);
     let client = reqwest::blocking::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&body)
+    let resp = with_auth(client.post(&url).json(&body))
         .send()
         .map_err(|e| format!("request failed: {e}"))?;
     let status = resp.status();

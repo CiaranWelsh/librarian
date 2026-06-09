@@ -18,6 +18,9 @@ pub struct DaemonConfig {
     #[serde(default = "default_embeds")]
     pub max_concurrent_embeds: usize,
     pub embedder: EmbedderCfg,
+    /// Path to keys.toml for bearer-key auth (issue 032). Default: `~/.librarian/keys.toml`.
+    #[serde(default)]
+    pub keys_path: Option<String>,
 }
 
 fn default_embeds() -> usize {
