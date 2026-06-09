@@ -1,32 +1,66 @@
 //! `librarian` CLI binary. Composition root for v1 commands.
 //!
-//! Adapter dispatch uses generics, no `Box<dyn Trait>` (per memory rule).
+//! Adapter dispatch uses generics, no `Box<dyn Trait>` (per memory rule). Global flags
+//! (`--json`, `--no-color`, `-q`, `-v`) are resolved once into a `Render` and threaded into the
+//! output commands; the daemon URL / timeout / limit follow flag > env > config > default
+//! precedence (docs/research/cli-ux/findings.md).
 
+mod client_config;
 mod commands;
 mod config;
 mod docs;
 mod fleet;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use commands::audit::cmd_audit;
 use commands::extract::cmd_extract;
 use commands::health::cmd_health;
+use commands::http::Daemon;
 use commands::ingest::cmd_ingest;
 use commands::judge::cmd_judge;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
+use commands::output::Render;
 use commands::query::cmd_query;
 use commands::remove::cmd_remove;
 use commands::snapshot::{cmd_restore, cmd_snapshot};
 use commands::status::{cmd_fleet_status, cmd_status_collection};
 
+const ABOUT: &str =
+    "Search and read the librarian reference corpus (a vector-DB RAG over your books and papers).";
+
+const AFTER_HELP: &str = "\
+Examples:
+  librarian query software \"how does hexagonal architecture work?\"
+  librarian extract software \"book.epub#3950\" --context 5
+  librarian query particle-physics \"time of arrival calibration\" --json | jq
+
+Workflow (locate, then read):
+  1. `query` a collection to find relevant chunks (each hit is <source_id>#<index>)
+  2. paste a hit token into `extract` to read the passage around it
+
+Tip: set LIBRARIAN_DAEMON=http://turbo:6700 once to skip --daemon on every call.";
+
 #[derive(Parser, Debug)]
-#[command(name = "librarian", version, about = "Vector-DB framework CLI")]
+#[command(name = "librarian", version, about = ABOUT, after_help = AFTER_HELP, arg_required_else_help = true)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
+    /// Output machine-readable JSON (stable schema) instead of human text.
+    #[arg(long, global = true)]
+    json: bool,
+    /// Disable color (also auto-off when NO_COLOR is set or stdout is not a terminal).
+    #[arg(long = "no-color", global = true)]
+    no_color: bool,
+    /// Suppress tips and progress; show only results and errors.
+    #[arg(short = 'q', long, global = true)]
+    quiet: bool,
+    /// Extra detail on stderr.
+    #[arg(short = 'v', long, global = true)]
+    verbose: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -80,35 +114,53 @@ enum Cmd {
         #[arg(long)]
         config: PathBuf,
     },
-    /// Query a collection via the running query daemon.
+    /// Search a collection for the most relevant chunks.
+    ///
+    /// Each hit is `<source_id>#<index>`; paste a hit into `extract` to read its passage.
+    #[command(
+        after_help = "Example:\n  librarian query software \"what is a saga pattern?\" --limit 8"
+    )]
     Query {
-        /// Collection name.
+        /// Collection name (e.g. software, particle-physics).
         collection: String,
-        /// Query text.
+        /// What to search for (a question works better than bare keywords).
         query: String,
-        /// Max hits.
-        #[arg(long, default_value_t = 5)]
-        limit: u64,
-        /// Daemon base URL.
-        #[arg(long, default_value = "http://localhost:6700")]
-        daemon: String,
+        /// Max hits to return [default: 5].
+        #[arg(short = 'n', long)]
+        limit: Option<u64>,
+        /// Daemon base URL (overrides $LIBRARIAN_DAEMON and config; default http://localhost:6700).
+        #[arg(long)]
+        daemon: Option<String>,
+        /// Request timeout in seconds [default: 30].
+        #[arg(long)]
+        timeout: Option<u64>,
     },
-    /// Read a contiguous chunk window from one source via the query daemon
-    /// (the read half of locate-then-extract; pair with `query`).
+    /// Read a window of chunks from one source (the read half of locate-then-extract).
+    ///
+    /// Accepts the `<source_id>#<index>` token that `query` prints; the index centres the window.
+    #[command(
+        after_help = "Examples:\n  librarian extract software \"book.epub#3950\"             # just that chunk\n  librarian extract software \"book.epub#3950\" --context 5  # 5 chunks either side"
+    )]
     Extract {
         /// Collection name.
         collection: String,
-        /// Source id (the `source_id` from a `query` hit).
-        source_id: String,
-        /// First chunk index, inclusive.
-        #[arg(long, default_value_t = 0)]
-        start: u32,
-        /// Last chunk index, exclusive; defaults to start + 20.
+        /// A source token from a query hit, e.g. "book.epub#3950" (the #index centres the window).
+        source: String,
+        /// Chunks to include either side of the #index.
+        #[arg(short = 'c', long, default_value_t = 0)]
+        context: u32,
+        /// Explicit window start (inclusive); overrides --context.
+        #[arg(long)]
+        start: Option<u32>,
+        /// Explicit window end (exclusive); defaults to start + 20.
         #[arg(long)]
         end: Option<u32>,
-        /// Daemon base URL.
-        #[arg(long, default_value = "http://localhost:6700")]
-        daemon: String,
+        /// Daemon base URL (overrides $LIBRARIAN_DAEMON and config).
+        #[arg(long)]
+        daemon: Option<String>,
+        /// Request timeout in seconds [default: 30].
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Run the golden probe set against a collection and report retrieval health
     /// (hit-rate@k, MRR, fragment-rate@5); append the run to a JSONL history (issue 028).
@@ -124,12 +176,15 @@ enum Cmd {
         /// Optional JSONL history file to append this run to.
         #[arg(long)]
         history: Option<PathBuf>,
-        /// Daemon base URL.
-        #[arg(long, default_value = "http://localhost:6700")]
-        daemon: String,
+        /// Daemon base URL (overrides $LIBRARIAN_DAEMON and config).
+        #[arg(long)]
+        daemon: Option<String>,
+        /// Request timeout in seconds [default: 30].
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// LLM context-relevance judge over a query's top-k chunks (issue 028, Tier 1).
-    /// The accurate on-demand RAG quality read. Needs `OPENAI_API_KEY`.
+    /// The accurate on-demand RAG quality read. Operator-only: needs `OPENAI_API_KEY`.
     Judge {
         /// Collection name.
         collection: String,
@@ -141,14 +196,24 @@ enum Cmd {
         /// Judge model (default gpt-4o-mini).
         #[arg(long)]
         model: Option<String>,
-        /// Daemon base URL.
-        #[arg(long, default_value = "http://localhost:6700")]
-        daemon: String,
+        /// Daemon base URL (overrides $LIBRARIAN_DAEMON and config).
+        #[arg(long)]
+        daemon: Option<String>,
+        /// Request timeout in seconds [default: 30].
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
+    /// Print a shell completion script (bash, zsh, fish, ...) to stdout.
+    #[command(after_help = "Example:\n  librarian completions zsh > ~/.zfunc/_librarian")]
+    Completions {
+        /// Target shell.
+        shell: Shell,
     },
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let render = Render::resolve(cli.json, cli.no_color, cli.quiet, cli.verbose);
     let result = match cli.cmd {
         Cmd::Ingest { config, input } => cmd_ingest(&config, &input),
         Cmd::Audit { config } => cmd_audit(&config),
@@ -168,28 +233,70 @@ fn main() -> ExitCode {
             query,
             limit,
             daemon,
-        } => cmd_query(&daemon, &collection, &query, limit),
+            timeout,
+        } => {
+            let cfg = client_config::ClientConfig::load();
+            let d = Daemon::new(
+                &cfg.resolve_daemon(daemon.as_deref()),
+                cfg.resolve_timeout(timeout),
+            );
+            cmd_query(&d, render, &collection, &query, cfg.resolve_limit(limit, 5))
+        }
         Cmd::Extract {
             collection,
-            source_id,
+            source,
+            context,
             start,
             end,
             daemon,
-        } => cmd_extract(&daemon, &collection, &source_id, start, end),
+            timeout,
+        } => {
+            let cfg = client_config::ClientConfig::load();
+            let d = Daemon::new(
+                &cfg.resolve_daemon(daemon.as_deref()),
+                cfg.resolve_timeout(timeout),
+            );
+            cmd_extract(&d, render, &collection, &source, context, start, end)
+        }
         Cmd::Health {
             collection,
             golden,
             k,
             history,
             daemon,
-        } => cmd_health(&daemon, &collection, &golden, k, history.as_deref()),
+            timeout,
+        } => {
+            let cfg = client_config::ClientConfig::load();
+            let d = Daemon::new(
+                &cfg.resolve_daemon(daemon.as_deref()),
+                cfg.resolve_timeout(timeout),
+            );
+            cmd_health(&d, render, &collection, &golden, k, history.as_deref())
+        }
         Cmd::Judge {
             collection,
             query,
             k,
             model,
             daemon,
-        } => cmd_judge(&daemon, &collection, &query, k, model.as_deref()),
+            timeout,
+        } => {
+            let cfg = client_config::ClientConfig::load();
+            let d = Daemon::new(
+                &cfg.resolve_daemon(daemon.as_deref()),
+                cfg.resolve_timeout(timeout),
+            );
+            cmd_judge(&d, render, &collection, &query, k, model.as_deref())
+        }
+        Cmd::Completions { shell } => {
+            generate(
+                shell,
+                &mut Cli::command(),
+                "librarian",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

@@ -14,7 +14,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::commands::query::fetch_search;
+use crate::commands::http::Daemon;
+use crate::commands::output::Render;
+use crate::commands::query::search;
 
 /// Fragment heuristic, mirroring `query_core`'s and `eval/run_eval.py`: under 80 characters or
 /// a bare markdown heading. Inlined to keep the CLI a thin client (no `query-core` dependency);
@@ -29,7 +31,7 @@ pub struct GoldenItem {
     pub relevant: Vec<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub struct HealthReport {
     pub n: usize,
     pub k: u64,
@@ -94,7 +96,8 @@ pub fn aggregate(per_question: &[(Option<usize>, f32, f32)], k: u64) -> HealthRe
 }
 
 pub fn cmd_health(
-    daemon: &str,
+    d: &Daemon,
+    r: Render,
     collection: &str,
     golden_path: &Path,
     k: u64,
@@ -112,7 +115,7 @@ pub fn cmd_health(
     let mut rows: Vec<(Option<usize>, String)> = Vec::new();
 
     for item in &golden {
-        let value = fetch_search(daemon, collection, &item.q, k)?;
+        let value = search(d, collection, &item.q, k)?;
         let hits = value["hits"].as_array().cloned().unwrap_or_default();
         let sources: Vec<String> = hits
             .iter()
@@ -132,20 +135,27 @@ pub fn cmd_health(
     }
 
     let report = aggregate(&per_question, k);
-    println!(
-        "health[{collection}]  n={}  hit-rate@{}={:.0}%  MRR={:.3}  fragment-rate@5={:.0}%  mean-top={:.3}",
-        report.n,
-        report.k,
-        report.hit_rate * 100.0,
-        report.mrr,
-        report.fragment_rate * 100.0,
-        report.mean_top_score,
-    );
-    println!("rank | question");
-    for (rank, q) in &rows {
-        let r = rank.map_or("-".to_string(), |x| x.to_string());
-        let preview: String = q.chars().take(60).collect();
-        println!("  {r:>3} | {preview}");
+    if r.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
+        );
+    } else {
+        println!(
+            "health[{collection}]  n={}  hit-rate@{}={:.0}%  MRR={:.3}  fragment-rate@5={:.0}%  mean-top={:.3}",
+            report.n,
+            report.k,
+            report.hit_rate * 100.0,
+            report.mrr,
+            report.fragment_rate * 100.0,
+            report.mean_top_score,
+        );
+        println!("rank | question");
+        for (rank, q) in &rows {
+            let rk = rank.map_or("-".to_string(), |x| x.to_string());
+            let preview: String = q.chars().take(60).collect();
+            println!("  {rk:>3} | {preview}");
+        }
     }
 
     if let Some(hp) = history_path {

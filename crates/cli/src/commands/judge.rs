@@ -9,7 +9,9 @@
 
 use serde_json::{json, Value};
 
-use crate::commands::query::fetch_search;
+use crate::commands::http::Daemon;
+use crate::commands::output::Render;
+use crate::commands::query::search;
 
 const DEFAULT_JUDGE_MODEL: &str = "gpt-4o-mini";
 
@@ -37,7 +39,7 @@ pub fn parse_score(reply: &str) -> u8 {
         .unwrap_or(0) as u8
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, serde::Serialize)]
 pub struct JudgeReport {
     pub n: usize,
     pub mean: f32,
@@ -69,7 +71,10 @@ fn call_judge(base_url: &str, key: &str, model: &str, prompt: &str) -> Result<u8
         "max_tokens": 1,
         "messages": [{"role": "user", "content": prompt}],
     });
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("build judge client: {e}"))?;
     let resp = client
         .post(&url)
         .bearer_auth(key)
@@ -89,7 +94,8 @@ fn call_judge(base_url: &str, key: &str, model: &str, prompt: &str) -> Result<u8
 }
 
 pub fn cmd_judge(
-    daemon: &str,
+    d: &Daemon,
+    r: Render,
     collection: &str,
     query: &str,
     k: u64,
@@ -100,12 +106,8 @@ pub fn cmd_judge(
     let base = std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com".into());
     let model = model.unwrap_or(DEFAULT_JUDGE_MODEL);
 
-    let value = fetch_search(daemon, collection, query, k)?;
+    let value = search(d, collection, query, k)?;
     let hits = value["hits"].as_array().cloned().unwrap_or_default();
-    if hits.is_empty() {
-        println!("no hits to judge for {query:?}");
-        return Ok(());
-    }
 
     let mut scores = Vec::new();
     for hit in &hits {
@@ -114,13 +116,22 @@ pub fn cmd_judge(
         let idx = hit["chunk_index"].as_u64().unwrap_or(0);
         let score = call_judge(&base, &key, model, &judge_prompt(query, text))?;
         scores.push(score);
-        println!("[{score}] {sid}#{idx}");
+        if !r.json {
+            println!("[{score}] {sid}#{idx}");
+        }
     }
     let report = aggregate(&scores);
-    println!(
-        "judge: {} chunks  mean={:.2}/2  directly-relevant={}/{}",
-        report.n, report.mean, report.relevant_count, report.n
-    );
+    if r.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
+        );
+    } else {
+        println!(
+            "judge: {} chunks  mean={:.2}/2  directly-relevant={}/{}",
+            report.n, report.mean, report.relevant_count, report.n
+        );
+    }
     Ok(())
 }
 
