@@ -3,6 +3,15 @@
 All notable changes to the librarian CLI are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions track `crates/cli`.
 
+## [1.1.1] - 2026-06-14
+
+### Fixed
+
+- `snapshot` / `restore` now target qdrant's **REST** API. The REST base is derived
+  from the configured gRPC `url` (port `6334 → 6333`, qdrant's default offset), with
+  an optional `[qdrant] rest_url` to override non-standard deployments. Previously the
+  snapshotter issued REST calls against the gRPC port and always failed.
+
 ## [1.1.0] - 2026-06-14
 
 ### Added

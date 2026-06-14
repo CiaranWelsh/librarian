@@ -20,6 +20,37 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct QdrantConfig {
     pub url: String,
+    #[serde(default)]
+    pub rest_url: Option<String>,
+}
+
+impl QdrantConfig {
+    /// REST API base for snapshot/restore. qdrant serves REST on the gRPC
+    /// port minus 1 (default 6333 vs 6334); `rest_url` overrides for
+    /// non-standard deployments. The indexer still uses `url` (gRPC).
+    pub fn rest_url(&self) -> String {
+        if let Some(explicit) = &self.rest_url {
+            return explicit.clone();
+        }
+        derive_rest_from_grpc(&self.url)
+    }
+}
+
+fn derive_rest_from_grpc(grpc: &str) -> String {
+    let trimmed = grpc.trim_end_matches('/');
+    // The port follows the last ':' (IPv6 brackets close before it). Only treat
+    // it as a port when it is all digits, so a bracketless IPv6 host or a
+    // port-less url passes through unchanged for the caller to override.
+    if let Some(colon) = trimmed.rfind(':') {
+        let (prefix, after_colon) = trimmed.split_at(colon);
+        let port_str = &after_colon[1..];
+        if !port_str.is_empty() && port_str.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(port) = port_str.parse::<u16>() {
+                return format!("{}:{}", prefix, port.saturating_sub(1));
+            }
+        }
+    }
+    trimmed.to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -251,5 +282,59 @@ kind = "stub"
         let m = &cfg.ingest.marker;
         assert!(m.device.is_none() && m.output_dir.is_none());
         assert!(m.recognition_batch_size.is_none());
+    }
+
+    #[test]
+    fn rest_url_derives_from_grpc_port() {
+        let q = QdrantConfig {
+            url: "http://localhost:6334".into(),
+            rest_url: None,
+        };
+        assert_eq!(q.rest_url(), "http://localhost:6333");
+    }
+
+    #[test]
+    fn rest_url_explicit_override_wins() {
+        let q = QdrantConfig {
+            url: "http://localhost:6334".into(),
+            rest_url: Some("http://qdrant-host:9999".into()),
+        };
+        assert_eq!(q.rest_url(), "http://qdrant-host:9999");
+    }
+
+    #[test]
+    fn rest_url_https_host_derives() {
+        let q = QdrantConfig {
+            url: "https://host:6334".into(),
+            rest_url: None,
+        };
+        assert_eq!(q.rest_url(), "https://host:6333");
+    }
+
+    #[test]
+    fn rest_url_no_port_unchanged() {
+        let q = QdrantConfig {
+            url: "http://localhost".into(),
+            rest_url: None,
+        };
+        assert_eq!(q.rest_url(), "http://localhost");
+    }
+
+    #[test]
+    fn rest_url_ipv6_derives() {
+        let q = QdrantConfig {
+            url: "http://[::1]:6334".into(),
+            rest_url: None,
+        };
+        assert_eq!(q.rest_url(), "http://[::1]:6333");
+    }
+
+    #[test]
+    fn derive_rest_trailing_slash_stripped() {
+        // Trailing slash is stripped before derivation.
+        assert_eq!(
+            derive_rest_from_grpc("http://localhost:6334/"),
+            "http://localhost:6333"
+        );
     }
 }

@@ -12,6 +12,7 @@ use crate::error::SnapshotError;
 
 pub struct QdrantNasSnapshotter {
     client: Client,
+    // REST base url (e.g. http://localhost:6333), not the gRPC endpoint.
     qdrant_url: String,
     collection: String,
     nas_path: PathBuf,
@@ -46,10 +47,18 @@ impl QdrantNasSnapshotter {
 }
 
 impl AdapterIdentity for QdrantNasSnapshotter {
-    fn name(&self) -> &str { "qdrant-nas-snapshotter" }
-    fn version(&self) -> StageVersion { StageVersion("0.1.0".into()) }
+    fn name(&self) -> &str {
+        "qdrant-nas-snapshotter"
+    }
+    fn version(&self) -> StageVersion {
+        StageVersion("0.1.0".into())
+    }
     fn config_hash(&self) -> ConfigHash {
-        ConfigHash(format!("c={};nas={}", self.collection, self.nas_path.display()))
+        ConfigHash(format!(
+            "c={};nas={}",
+            self.collection,
+            self.nas_path.display()
+        ))
     }
 }
 
@@ -59,32 +68,38 @@ impl Snapshotter for QdrantNasSnapshotter {
     fn snapshot(&self) -> Result<SnapshotId, Self::Error> {
         // 1. Ask Qdrant to create a snapshot.
         let create_url = format!(
-            "{}/collections/{}/snapshots", self.qdrant_url, self.collection,
+            "{}/collections/{}/snapshots",
+            self.qdrant_url, self.collection,
         );
         let create_resp = Self::http("create", || self.client.post(&create_url).send())?;
         if !create_resp.status().is_success() {
             return Err(SnapshotError::Qdrant(format!(
-                "create snapshot http {}", create_resp.status()
+                "create snapshot http {}",
+                create_resp.status()
             )));
         }
         let create_body: serde_json::Value = Self::http("create-body", || create_resp.json())?;
-        let name = create_body["result"]["name"].as_str()
+        let name = create_body["result"]["name"]
+            .as_str()
             .ok_or_else(|| SnapshotError::Qdrant("missing snapshot name in response".into()))?
             .to_string();
         let id = SnapshotId(format!("{}__{}", self.collection, name));
 
         // 2. Download the snapshot file from Qdrant and write to NAS.
         let download_url = format!(
-            "{}/collections/{}/snapshots/{}", self.qdrant_url, self.collection, name,
+            "{}/collections/{}/snapshots/{}",
+            self.qdrant_url, self.collection, name,
         );
         let bytes = Self::http("download", || self.client.get(&download_url).send())?
-            .error_for_status().map_err(|e| SnapshotError::Qdrant(e.to_string()))?;
+            .error_for_status()
+            .map_err(|e| SnapshotError::Qdrant(e.to_string()))?;
         let body = Self::http("download-body", || bytes.bytes())?;
         std::fs::write(self.nas_file(&id), &body).map_err(SnapshotError::Io)?;
 
         // 3. Free the snapshot from Qdrant — NAS is the durable copy.
         let delete_url = format!(
-            "{}/collections/{}/snapshots/{}", self.qdrant_url, self.collection, name,
+            "{}/collections/{}/snapshots/{}",
+            self.qdrant_url, self.collection, name,
         );
         let _ = self.client.delete(&delete_url).send();
 
@@ -93,7 +108,9 @@ impl Snapshotter for QdrantNasSnapshotter {
 
     fn restore(&self, id: &SnapshotId) -> Result<(), Self::Error> {
         let path = self.nas_file(id);
-        if !path.exists() { return Err(SnapshotError::NotFound(id.0.clone())); }
+        if !path.exists() {
+            return Err(SnapshotError::NotFound(id.0.clone()));
+        }
         let upload_url = format!(
             "{}/collections/{}/snapshots/upload?priority=snapshot",
             self.qdrant_url, self.collection,
@@ -101,7 +118,9 @@ impl Snapshotter for QdrantNasSnapshotter {
         let form = multipart::Form::new()
             .file("snapshot", &path)
             .map_err(SnapshotError::Io)?;
-        let resp = Self::http("upload", || self.client.post(&upload_url).multipart(form).send())?;
+        let resp = Self::http("upload", || {
+            self.client.post(&upload_url).multipart(form).send()
+        })?;
         if !resp.status().is_success() {
             let s = resp.status();
             let body = resp.text().unwrap_or_default();
