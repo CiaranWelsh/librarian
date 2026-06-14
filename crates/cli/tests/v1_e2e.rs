@@ -127,6 +127,7 @@ kind = "stub"
 [ingest]
 content_type = "book"
 extractor = "text"
+corpus_root = "{corpus_root}"
 
 [snapshot]
 retention = 5
@@ -135,6 +136,7 @@ retention = 5
                 cache = dir.join("cache").display(),
                 manifest = dir.join("manifest.sqlite").display(),
                 nas = dir.join("nas").display(),
+                corpus_root = dir.display(),
             );
             std::fs::write(&p, body).unwrap();
             p

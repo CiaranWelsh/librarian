@@ -58,6 +58,20 @@ pub enum EmbedderConfig {
     },
 }
 
+impl EmbedderConfig {
+    /// The vector dimension this embedder produces, read from the config without
+    /// constructing a network embedder (so callers like the idempotency pre-check
+    /// need no API key). The stub's dimension comes from a throwaway `StubEmbedder`.
+    pub fn dimension(&self) -> u64 {
+        use librarian_domain::Embedder;
+        match self {
+            EmbedderConfig::Stub => adapter_embedder_stub::StubEmbedder::new().dimension() as u64,
+            EmbedderConfig::Openai { dimensions, .. }
+            | EmbedderConfig::Voyage { dimensions, .. } => *dimensions as u64,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct IngestConfig {
     #[serde(default = "default_content_type")]
@@ -77,6 +91,10 @@ pub struct IngestConfig {
     /// `[ingest.marker]` — marker subprocess knobs for the pdf extractor (issue 030).
     #[serde(default)]
     pub marker: MarkerTomlConfig,
+    /// Root that `source_id` is made relative to (ADR-0007). Ingest rejects files
+    /// outside this root, so the tool always produces canonical relative source_ids.
+    #[serde(default = "default_corpus_root")]
+    pub corpus_root: PathBuf,
 }
 
 impl Default for IngestConfig {
@@ -88,6 +106,7 @@ impl Default for IngestConfig {
             chunk_size: default_chunk_size(),
             chunk_overlap: default_chunk_overlap(),
             marker: MarkerTomlConfig::default(),
+            corpus_root: default_corpus_root(),
         }
     }
 }
@@ -110,6 +129,9 @@ pub struct MarkerTomlConfig {
     pub output_dir: Option<PathBuf>,
 }
 
+fn default_corpus_root() -> PathBuf {
+    "/data/corpus".into()
+}
 fn default_content_type() -> String {
     "book".into()
 }

@@ -203,6 +203,35 @@ enum Cmd {
         #[arg(long)]
         timeout: Option<u64>,
     },
+    /// Add a resource to a collection (quality-gated; preview by default).
+    Add {
+        /// Path to the resource file to add (omit only with --undo).
+        path: Option<PathBuf>,
+        /// Collection to add the resource to.
+        #[arg(long)]
+        to: String,
+        /// Write to the collection (omit for dry-run preview).
+        #[arg(long)]
+        commit: bool,
+        /// Override the shelf segment of the canonical path.
+        #[arg(long)]
+        shelf: Option<String>,
+        /// Override the slug derived from the filename.
+        #[arg(long)]
+        slug: Option<String>,
+        /// Move the source file into the corpus root instead of copying.
+        #[arg(long = "move")]
+        r#move: bool,
+        /// Skip quality gates and ingest regardless of score.
+        #[arg(long)]
+        force: bool,
+        /// Run the LLM judge after ingest and report scores.
+        #[arg(long)]
+        judge: bool,
+        /// Remove a previously-added resource by source_id.
+        #[arg(long)]
+        undo: Option<String>,
+    },
     /// Print a shell completion script (bash, zsh, fish, ...) to stdout.
     #[command(after_help = "Example:\n  librarian completions zsh > ~/.zfunc/_librarian")]
     Completions {
@@ -288,6 +317,30 @@ fn main() -> ExitCode {
             );
             cmd_judge(&d, render, &collection, &query, k, model.as_deref())
         }
+        Cmd::Add {
+            path,
+            to,
+            commit,
+            shelf,
+            slug,
+            r#move,
+            force,
+            judge,
+            undo,
+        } => commands::add::cmd_add(
+            commands::add::AddArgs {
+                path,
+                to,
+                commit,
+                shelf,
+                slug,
+                move_: r#move,
+                force,
+                judge,
+                undo,
+            },
+            render,
+        ),
         Cmd::Completions { shell } => {
             generate(
                 shell,

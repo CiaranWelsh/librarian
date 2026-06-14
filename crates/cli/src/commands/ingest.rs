@@ -28,7 +28,7 @@ use crate::docs::{collect_docs, print_outcomes};
 
 /// Build the PDF extractor with the `[ingest.marker]` knobs (issue 030) so constrained
 /// GPUs get their batch flags and the markdown can land somewhere durable.
-fn pdf_extractor(cfg: &Config) -> PdfExtractor {
+pub(crate) fn pdf_extractor(cfg: &Config) -> PdfExtractor {
     let m = &cfg.ingest.marker;
     PdfExtractor::new().with_config(MarkerConfig {
         device: m.device.clone(),
@@ -42,7 +42,12 @@ fn pdf_extractor(cfg: &Config) -> PdfExtractor {
 
 pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
     let cfg = Config::load(config_path).map_err(|e| e.to_string())?;
-    let docs = collect_docs(input, &cfg.ingest.content_type, &cfg.ingest.extractor)?;
+    let docs = collect_docs(
+        input,
+        &cfg.ingest.content_type,
+        &cfg.ingest.extractor,
+        &cfg.ingest.corpus_root,
+    )?;
     if docs.is_empty() {
         println!("no input files found at {}", input.display());
         return Ok(());
@@ -217,13 +222,13 @@ pub fn cmd_ingest(config_path: &Path, input: &Path) -> Result<(), String> {
 /// Runtime chunker selection via enum dispatch (no `Box<dyn>`, per project rule). Code
 /// content always uses `CodeChunker`; text content chooses between the recursive (issue 027)
 /// and legacy blank-line chunkers via `[ingest] chunker`.
-enum SelectedChunker {
+pub(crate) enum SelectedChunker {
     BlankLine(BlankLineChunker),
     Recursive(RecursiveChunker),
 }
 
 #[derive(Debug, thiserror::Error)]
-enum SelectedChunkError {
+pub(crate) enum SelectedChunkError {
     #[error(transparent)]
     BlankLine(#[from] BlankLineChunkError),
     #[error(transparent)]
@@ -261,7 +266,7 @@ impl Chunker for SelectedChunker {
     }
 }
 
-fn select_chunker(cfg: &IngestConfig) -> Result<SelectedChunker, String> {
+pub(crate) fn select_chunker(cfg: &IngestConfig) -> Result<SelectedChunker, String> {
     match cfg.chunker.as_str() {
         "blankline" => Ok(SelectedChunker::BlankLine(BlankLineChunker::new())),
         "recursive" => Ok(SelectedChunker::Recursive(RecursiveChunker::with_budget(

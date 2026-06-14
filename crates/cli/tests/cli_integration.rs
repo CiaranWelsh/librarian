@@ -37,10 +37,12 @@ kind = "stub"
 [ingest]
 content_type = "book"
 extractor = "text"
+corpus_root = "{corpus_root}"
 "#,
         url = qdrant_url(),
         cache = dir.join("cache").display(),
         manifest = dir.join("manifest.sqlite").display(),
+        corpus_root = fixtures_root().display(),
     );
     std::fs::write(&cfg_path, body).unwrap();
     cfg_path
@@ -51,6 +53,15 @@ fn fixture_path() -> std::path::PathBuf {
     p.pop();
     p.pop();
     p.push("tests/fixtures/sample.txt");
+    p
+}
+
+/// Corpus root for tests: the fixtures dir, so ingest accepts `sample.txt` under it (ADR-0007).
+fn fixtures_root() -> std::path::PathBuf {
+    let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.pop();
+    p.pop();
+    p.push("tests/fixtures");
     p
 }
 
@@ -75,6 +86,9 @@ fn ingest_status_remove_status_round_trip() {
         return;
     }
 
+    // The recursive chunker (default since issue 027) packs the small `sample.txt`
+    // fixture into a single chunk; the round-trip checks the ingest -> status ->
+    // remove invariant, so the exact count just has to match the default chunker.
     Command::cargo_bin("librarian")
         .unwrap()
         .args(["ingest", "--config"])
@@ -82,7 +96,7 @@ fn ingest_status_remove_status_round_trip() {
         .arg(&fixture)
         .assert()
         .success()
-        .stdout(contains("ok\t").and(contains("chunks=3")));
+        .stdout(contains("ok\t").and(contains("chunks=1")));
 
     Command::cargo_bin("librarian")
         .unwrap()
@@ -90,9 +104,12 @@ fn ingest_status_remove_status_round_trip() {
         .arg(&cfg)
         .assert()
         .success()
-        .stdout(contains("points: 3"));
+        .stdout(contains("points: 1"));
 
-    let source_id = fixture.display().to_string();
+    // G6 (ADR-0007) makes the ingested source_id relative to corpus_root, so the
+    // fixture under `fixtures_root()` is just "sample.txt" — remove must key off
+    // that canonical id, not the absolute path it was once.
+    let source_id = "sample.txt".to_string();
     Command::cargo_bin("librarian")
         .unwrap()
         .args(["remove", "--config"])
@@ -140,6 +157,21 @@ fn malformed_config_yields_parse_error() {
 // stub subcommands carry a distinct exit code.
 
 #[test]
+fn add_requires_to_flag() {
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["add", "x.pdf"])
+        .assert()
+        .failure();
+    Command::cargo_bin("librarian")
+        .unwrap()
+        .args(["add", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("--to"));
+}
+
+#[test]
 fn snapshot_invokes_orchestrator_and_prints_id() {
     use std::process::Command as StdCmd;
     let dir = TempDir::new().unwrap();
@@ -163,11 +195,13 @@ kind = "stub"
 [ingest]
 content_type = "book"
 extractor = "text"
+corpus_root = "{corpus_root}"
 "#,
         url = qdrant_url(),
         cache = dir.path().join("cache").display(),
         manifest = dir.path().join("manifest.sqlite").display(),
         nas = dir.path().join("nas").display(),
+        corpus_root = fixtures_root().display(),
     );
     std::fs::write(&cfg_path, body).unwrap();
 

@@ -21,7 +21,7 @@ use crate::commands::query::search;
 /// Fragment heuristic, mirroring `query_core`'s and `eval/run_eval.py`: under 80 characters or
 /// a bare markdown heading. Inlined to keep the CLI a thin client (no `query-core` dependency);
 /// the definition is intentionally identical so online and offline scores agree.
-fn is_fragment(text: &str) -> bool {
+pub(crate) fn is_fragment(text: &str) -> bool {
     text.chars().count() < 80 || text.trim_start().starts_with('#')
 }
 
@@ -31,7 +31,9 @@ pub struct GoldenItem {
     pub relevant: Vec<String>,
 }
 
-#[derive(Debug, PartialEq, serde::Serialize)]
+/// Each JSONL history line is a superset of this struct (extra `ts`/`collection` fields);
+/// serde ignores unknown fields by default, so history lines deserialize cleanly.
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HealthReport {
     pub n: usize,
     pub k: u64,
@@ -95,26 +97,32 @@ pub fn aggregate(per_question: &[(Option<usize>, f32, f32)], k: u64) -> HealthRe
     }
 }
 
-pub fn cmd_health(
-    d: &Daemon,
-    r: Render,
-    collection: &str,
-    golden_path: &Path,
-    k: u64,
-    history_path: Option<&Path>,
-) -> Result<(), String> {
-    let raw = std::fs::read_to_string(golden_path)
-        .map_err(|e| format!("read golden {}: {e}", golden_path.display()))?;
+/// Read and parse the golden probe set, rejecting an empty set. Shared by
+/// `cmd_health` and `add`'s Gate 2.
+pub(crate) fn load_golden(path: &Path) -> Result<Vec<GoldenItem>, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("read golden {}: {e}", path.display()))?;
     let golden: Vec<GoldenItem> =
         serde_json::from_str(&raw).map_err(|e| format!("parse golden: {e}"))?;
     if golden.is_empty() {
         return Err("golden probe set is empty".into());
     }
+    Ok(golden)
+}
 
+/// Run every golden question against the collection, returning the per-question
+/// `(first-relevant-rank, fragment-rate@5, top-1 score)` outcomes in golden order.
+/// Owns the search loop and hit-list parsing; the metric math stays in `aggregate`.
+/// Shared by `cmd_health` (which also derives a rank row per question) and `add`'s
+/// Gate 2.
+pub(crate) fn measure_per_question(
+    d: &Daemon,
+    collection: &str,
+    golden: &[GoldenItem],
+    k: u64,
+) -> Result<Vec<(Option<usize>, f32, f32)>, String> {
     let mut per_question: Vec<(Option<usize>, f32, f32)> = Vec::new();
-    let mut rows: Vec<(Option<usize>, String)> = Vec::new();
-
-    for item in &golden {
+    for item in golden {
         let value = search(d, collection, &item.q, k)?;
         let hits = value["hits"].as_array().cloned().unwrap_or_default();
         let sources: Vec<String> = hits
@@ -131,8 +139,106 @@ pub fn cmd_health(
             .unwrap_or(0.0) as f32;
         let rank = first_relevant_rank(&sources, &item.relevant);
         per_question.push((rank, fragment_rate_at5(&texts), top_score));
-        rows.push((rank, item.q.clone()));
     }
+    Ok(per_question)
+}
+
+/// Measure retrieval health into a `HealthReport`. Shared by `add`'s Gate 2;
+/// `cmd_health` aggregates its own loop output because it also builds the rows.
+pub(crate) fn measure(
+    d: &Daemon,
+    collection: &str,
+    golden: &[GoldenItem],
+    k: u64,
+) -> Result<HealthReport, String> {
+    Ok(aggregate(
+        &measure_per_question(d, collection, golden, k)?,
+        k,
+    ))
+}
+
+/// Append one report to the JSONL history, tagging it with the wall-clock second
+/// and collection. The on-disk shape is a superset of `HealthReport`, so
+/// `read_history` deserializes it back (serde ignores the extra fields). Shared by
+/// `cmd_health` and `add`'s Gate 2; prints the "appended to" line itself so both
+/// callers report consistently.
+pub(crate) fn append_history(
+    path: &Path,
+    collection: &str,
+    report: &HealthReport,
+) -> Result<(), String> {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let record = json!({
+        "ts": ts,
+        "collection": collection,
+        "k": report.k,
+        "n": report.n,
+        "hit_rate": report.hit_rate,
+        "mrr": report.mrr,
+        "fragment_rate": report.fragment_rate,
+        "mean_top_score": report.mean_top_score,
+    });
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("open history {}: {e}", path.display()))?;
+    f.write_all(format!("{record}\n").as_bytes())
+        .map_err(|e| format!("write history: {e}"))?;
+    println!("appended to {}", path.display());
+    Ok(())
+}
+
+/// Read the JSONL history into `HealthReport`s, newest entries last. Robust over
+/// strict: a missing file is an empty history, blank lines are skipped, and a
+/// malformed line is skipped rather than aborting the read (a single bad append
+/// must not blind the regression gate to the rest of the baseline).
+pub(crate) fn read_history(path: &Path) -> Result<Vec<HealthReport>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("read history {}: {e}", path.display())),
+    };
+    let mut reports = Vec::new();
+    let mut skipped = 0usize;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<HealthReport>(line) {
+            Ok(r) => reports.push(r),
+            Err(_) => skipped += 1,
+        }
+    }
+    if skipped > 0 {
+        eprintln!(
+            "WARNING: skipped {skipped} malformed line(s) in history {}",
+            path.display()
+        );
+    }
+    Ok(reports)
+}
+
+pub fn cmd_health(
+    d: &Daemon,
+    r: Render,
+    collection: &str,
+    golden_path: &Path,
+    k: u64,
+    history_path: Option<&Path>,
+) -> Result<(), String> {
+    let golden = load_golden(golden_path)?;
+
+    // One shared search loop (`measure_per_question`); the human table additionally
+    // wants a per-question rank row, derived by zipping the outcomes with the golden
+    // questions in order.
+    let per_question = measure_per_question(d, collection, &golden, k)?;
+    let rows: Vec<(Option<usize>, String)> = golden
+        .iter()
+        .zip(&per_question)
+        .map(|(item, (rank, _, _))| (*rank, item.q.clone()))
+        .collect();
 
     let report = aggregate(&per_question, k);
     if r.json {
@@ -159,29 +265,7 @@ pub fn cmd_health(
     }
 
     if let Some(hp) = history_path {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let record = json!({
-            "ts": ts,
-            "collection": collection,
-            "k": report.k,
-            "n": report.n,
-            "hit_rate": report.hit_rate,
-            "mrr": report.mrr,
-            "fragment_rate": report.fragment_rate,
-            "mean_top_score": report.mean_top_score,
-        });
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(hp)
-            .map_err(|e| format!("open history {}: {e}", hp.display()))?;
-        f.write_all(format!("{record}\n").as_bytes())
-            .map_err(|e| format!("write history: {e}"))?;
-        println!("appended to {}", hp.display());
+        append_history(hp, collection, &report)?;
     }
     Ok(())
 }
@@ -225,6 +309,31 @@ mod tests {
         assert!((r.mrr - 0.5).abs() < 1e-6); // (1 + 0.5 + 0)/3
         assert!((r.fragment_rate - 0.5).abs() < 1e-6); // (0 + 0.5 + 1)/3
         assert!((r.mean_top_score - 0.4).abs() < 1e-6); // (0.6 + 0.5 + 0.1)/3
+    }
+
+    #[test]
+    fn read_history_parses_jsonl_skipping_blanks() {
+        // Two real history lines (one carrying the extra ts/collection tags serde
+        // ignores) plus a blank line; expect exactly two reports back.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("health_software.jsonl");
+        let body = "{\"ts\":1700000000,\"collection\":\"software\",\"k\":10,\"n\":50,\"hit_rate\":0.98,\"mrr\":0.77,\"fragment_rate\":0.02,\"mean_top_score\":0.61}\n\
+            \n\
+            {\"k\":10,\"n\":50,\"hit_rate\":1.0,\"mrr\":0.80,\"fragment_rate\":0.0,\"mean_top_score\":0.65}\n";
+        std::fs::write(&path, body).unwrap();
+
+        let reports = read_history(&path).unwrap();
+        assert_eq!(reports.len(), 2);
+        assert!((reports[0].hit_rate - 0.98).abs() < 1e-6);
+        assert_eq!(reports[0].n, 50);
+        assert!((reports[1].mrr - 0.80).abs() < 1e-6);
+    }
+
+    #[test]
+    fn read_history_missing_file_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.jsonl");
+        assert!(read_history(&missing).unwrap().is_empty());
     }
 
     #[test]
