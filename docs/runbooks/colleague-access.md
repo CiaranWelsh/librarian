@@ -44,6 +44,20 @@ curl -s -H "Authorization: Bearer $LIBRARIAN_KEY" -H 'content-type: application/
 Endpoints: `POST /v1/search`, `GET /v1/documents?collection=`, `POST /v1/extract`,
 `GET /v1/collections`.
 
+### Optional: teach your Claude to use it (Claude Code skill)
+
+A ready-made skill teaches Claude Code when and how to search the library (query
+strategy, citing source_ids, reporting retrieval confidence):
+
+```bash
+mkdir -p ~/.claude/skills/librarian
+curl -o ~/.claude/skills/librarian/SKILL.md \
+  https://raw.githubusercontent.com/CiaranWelsh/librarian/main/skills/librarian/SKILL.md
+```
+
+Restart Claude Code; it will pick the skill up automatically when reference
+questions come up (or invoke it directly with `/librarian`).
+
 ### Key etiquette
 
 - The key is a bearer token: **anyone holding it is you.** Keep it in your shell profile
