@@ -23,7 +23,9 @@ operator — see the colleague-access runbook in the repo). Any OS works; the CL
 builds with Rust's `cargo` (install via https://rustup.rs if you don't have it):
 
 ```
-cargo install --git https://github.com/CiaranWelsh/librarian librarian-cli
+git clone git@bitbucket.org:amscins/librarian.git   # or: https://github.com/CiaranWelsh/librarian
+cd librarian
+cargo install --path crates/cli
 ```
 
 Then set two environment variables, persistently for your platform:
