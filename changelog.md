@@ -3,6 +3,34 @@
 All notable changes to the librarian CLI are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions track `crates/cli`.
 
+## [1.2.0] - 2026-07-10
+
+### Added
+
+- **Public keyed access (issue 032, `feat/serving`).** The query daemon now supports
+  bearer-key auth with per-key token-bucket rate limits: keys in `~/.librarian/keys.toml`
+  (hot-reloaded on save, no restart), fail-closed on `/v1/*`, `/healthz` open. The CLI
+  sends `Authorization: Bearer $LIBRARIAN_KEY` when set. Deployed: the library is served
+  read-only at **`https://asi-librarian.com`** (Cloudflare Tunnel → keyed daemon on
+  turbo:6701, systemd-supervised); the tailnet daemon is unchanged in behaviour once a
+  key is exported. Onboarding + security model: `docs/runbooks/colleague-access.md`.
+- **JSONL access log** on the daemon (traffic monitoring without a telemetry stack):
+  one line per `/v1` request — ts, route, status, ms, user, plus collection/confidence
+  (and query text, suppressible) for searches. Opt-in via `[access_log]` in the serve
+  config; auth rejects are logged userless. Analysis = `jq`; issue 033's telemetry
+  design is deferred and can consume the same lines later.
+- **CLI UX overhaul (issue 037).** Shared daemon client with request timeouts and typed
+  what/why/fix error messages; `LIBRARIAN_DAEMON` env + XDG config precedence;
+  `extract` accepts `source_id#idx` tokens with `--context`; `--json` output;
+  TTY-aware color (`NO_COLOR` honoured) with match highlighting; `--quiet`/`--verbose`;
+  shell completions.
+
+### Notes
+
+- `query-daemon` crate bumped to 1.1.0. A daemon built from this version **requires**
+  keys: with no `keys.toml`, all `/v1` requests 401 (fail-closed by design). Export
+  `LIBRARIAN_KEY` on tailnet clients before upgrading a previously open daemon.
+
 ## [1.1.1] - 2026-06-14
 
 ### Fixed
