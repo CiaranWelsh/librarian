@@ -43,7 +43,8 @@ pub async fn spawn() -> (String, tokio::task::JoinHandle<()>) {
         mem.add("demo", demo_chunk(s, 0, t), v);
     }
     let svc = Arc::new(QueryService::new(Arc::new(stub), mem, 4));
-    let app = router(AppState { svc });
+    // No auth, no access log: the harness tests the query surface, not the gate.
+    let app = router(AppState { svc }, None, None);
     // bind() completes before we return the URL — callers never race the server
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

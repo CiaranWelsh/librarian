@@ -11,6 +11,7 @@ use librarian_domain::{
     Provenance, SourceId, StageVersion, Vector,
 };
 use query_core::QueryService;
+use query_daemon::access_log::AccessLog;
 use query_daemon::auth::AuthState;
 use query_daemon::{router, AppState};
 use tower::ServiceExt; // oneshot
@@ -49,7 +50,7 @@ fn test_app() -> axum::Router {
     let apple = stub.embed(&["apple"]).unwrap().remove(0);
     mem.add("c", book_chunk("apple", 0, "apple body"), apple);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    router(AppState { svc: Arc::new(svc) }, auth())
+    router(AppState { svc: Arc::new(svc) }, Some(auth()), None)
 }
 
 // ---- plan tests ----------------------------------------------------------
@@ -126,7 +127,7 @@ async fn confidence_is_no_answer_on_empty_result() {
     let v = stub.embed(&["apple"]).unwrap().remove(0);
     mem.add("col", book_chunk("apple", 0, "apple body"), v);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) }, auth());
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth()), None);
 
     // content_type=paper matches nothing → zero hits → LikelyNoAnswer.
     let req = Request::post("/v1/search")
@@ -197,7 +198,7 @@ async fn extract_returns_chunks() {
         );
     }
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) }, auth());
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth()), None);
 
     let req = Request::post("/v1/extract")
         .header("content-type", "application/json")
@@ -226,7 +227,7 @@ async fn limit_defaults_to_five() {
         mem.add("col", book_chunk(&format!("doc{i}"), 0, "body"), v);
     }
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) }, auth());
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth()), None);
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
@@ -247,7 +248,7 @@ async fn empty_result_is_200_not_404() {
     // seed a book chunk; then search with content_type=paper (no papers exist)
     mem.add("col", book_chunk("apple", 0, "apple body"), v);
     let svc = QueryService::new(Arc::new(stub), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) }, auth());
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth()), None);
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
@@ -304,7 +305,7 @@ async fn recoverable_embed_is_503_with_retry_after() {
     let mem = MemSearcher::new();
     mem.add("col", book_chunk("doc", 0, "body"), vec![1.0_f32; 4]);
     let svc = QueryService::new(Arc::new(RecoverableEmbedder), mem, 4);
-    let app = router(AppState { svc: Arc::new(svc) }, auth());
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth()), None);
 
     let req = Request::post("/v1/search")
         .header("content-type", "application/json")
@@ -319,4 +320,78 @@ async fn recoverable_embed_is_503_with_retry_after() {
             .and_then(|v| v.to_str().ok()),
         Some("2")
     );
+}
+
+// ---- access log (traffic monitoring, no telemetry stack) ------------------
+
+fn seeded_app(log: Arc<AccessLog>) -> axum::Router {
+    let stub = StubEmbedder::new();
+    let mem = MemSearcher::new();
+    let apple = stub.embed(&["apple"]).unwrap().remove(0);
+    mem.add("c", book_chunk("apple", 0, "apple body"), apple);
+    let svc = QueryService::new(Arc::new(stub), mem, 4);
+    router(AppState { svc: Arc::new(svc) }, Some(auth()), Some(log))
+}
+
+fn read_lines(path: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn access_log_writes_one_line_per_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("access.jsonl");
+    let app = seeded_app(Arc::new(AccessLog::new(path.clone(), true)));
+
+    let ok = Request::post("/v1/search")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
+        .body(Body::from(r#"{"collection":"c","query":"apple"}"#))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(ok).await.unwrap().status(),
+        StatusCode::OK
+    );
+    // a rejected request is traffic too — logged, but with no user
+    let bad = Request::post("/v1/search")
+        .body(Body::from(r#"{"collection":"c","query":"apple"}"#))
+        .unwrap();
+    assert_eq!(
+        app.oneshot(bad).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    let lines = read_lines(&path);
+    assert_eq!(lines.len(), 2, "one line per /v1 request: {lines:?}");
+    assert_eq!(lines[0]["route"], "/v1/search");
+    assert_eq!(lines[0]["status"], 200);
+    assert_eq!(lines[0]["user"], "t");
+    assert_eq!(lines[0]["collection"], "c");
+    assert_eq!(lines[0]["query"], "apple");
+    assert!(lines[0]["confidence"].is_string(), "search logs its label");
+    assert!(lines[0]["ts"].is_u64() && lines[0]["ms"].is_u64());
+    assert_eq!(lines[1]["status"], 401);
+    assert!(lines[1].get("user").is_none(), "reject has no identity");
+}
+
+#[tokio::test]
+async fn access_log_omits_query_text_when_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("access.jsonl");
+    let app = seeded_app(Arc::new(AccessLog::new(path.clone(), false)));
+
+    let req = Request::post("/v1/search")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer test")
+        .body(Body::from(r#"{"collection":"c","query":"apple"}"#))
+        .unwrap();
+    assert_eq!(app.oneshot(req).await.unwrap().status(), StatusCode::OK);
+
+    let lines = read_lines(&path);
+    assert!(lines[0].get("query").is_none(), "query text suppressed");
+    assert_eq!(lines[0]["collection"], "c", "shape still logged");
 }

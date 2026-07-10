@@ -87,7 +87,8 @@ async fn concurrent_searches_succeed_and_embeds_are_bounded() {
     let svc = Arc::new(QueryService::new(Arc::clone(&emb), mem, LIMIT));
     let app = router(
         AppState { svc },
-        Arc::new(AuthState::single_key("test", "t")),
+        Some(Arc::new(AuthState::single_key("test", "t"))),
+        None,
     );
 
     let mut handles = Vec::new();

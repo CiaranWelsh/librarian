@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use adapter_indexer_qdrant::QdrantSearcher;
 use query_core::QueryService;
+use query_daemon::access_log::AccessLog;
 use query_daemon::auth::AuthState;
 use query_daemon::config::{AppEmbedder, DaemonConfig};
 use query_daemon::{router, AppState};
@@ -44,7 +45,11 @@ fn run() -> Result<(), String> {
         None => default_keys_path()?,
     };
     let auth = Arc::new(AuthState::new(keys_path));
-    let app = router(AppState { svc: Arc::new(svc) }, auth);
+    let access = cfg
+        .access_log
+        .as_ref()
+        .map(|c| Arc::new(AccessLog::new(PathBuf::from(&c.path), c.queries)));
+    let app = router(AppState { svc: Arc::new(svc) }, Some(auth), access);
 
     let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(async move {
