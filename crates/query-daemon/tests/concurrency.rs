@@ -15,6 +15,7 @@ use librarian_domain::{
     Provenance, SourceId, StageVersion, Vector,
 };
 use query_core::QueryService;
+use query_daemon::auth::AuthState;
 use query_daemon::{router, AppState};
 use tower::ServiceExt;
 
@@ -84,7 +85,11 @@ async fn concurrent_searches_succeed_and_embeds_are_bounded() {
     let mem = MemSearcher::new();
     mem.add("c", seed_chunk("doc"), vec![1.0_f32; 4]);
     let svc = Arc::new(QueryService::new(Arc::clone(&emb), mem, LIMIT));
-    let app = router(AppState { svc });
+    let app = router(
+        AppState { svc },
+        Some(Arc::new(AuthState::single_key("test", "t"))),
+        None,
+    );
 
     let mut handles = Vec::new();
     for _ in 0..REQUESTS {
@@ -92,6 +97,7 @@ async fn concurrent_searches_succeed_and_embeds_are_bounded() {
         handles.push(tokio::spawn(async move {
             let req = Request::post("/v1/search")
                 .header("content-type", "application/json")
+                .header("authorization", "Bearer test")
                 .body(Body::from(r#"{"collection":"c","query":"x"}"#))
                 .unwrap();
             app.oneshot(req).await.unwrap().status()

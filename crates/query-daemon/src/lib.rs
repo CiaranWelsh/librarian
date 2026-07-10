@@ -4,8 +4,10 @@
 
 use std::sync::Arc;
 
+use axum::extract::Request;
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -17,6 +19,11 @@ use query_core::{
     retrieval_confidence, ConfidenceLabel, QueryError, QueryService, RetrievalConfidence,
 };
 
+use crate::access_log::{access_mw, AccessLog, LogFields};
+use crate::auth::{AuthReject, AuthState};
+
+pub mod access_log;
+pub mod auth;
 pub mod config;
 
 #[cfg(feature = "test-support")]
@@ -34,18 +41,75 @@ impl<E, S> Clone for AppState<E, S> {
     }
 }
 
-pub fn router<E, S>(state: AppState<E, S>) -> Router
+/// `auth: None` skips the auth layer (test harnesses only — `main.rs` always passes `Some`,
+/// so a deployed daemon is fail-closed). `access: None` disables the access log.
+pub fn router<E, S>(
+    state: AppState<E, S>,
+    auth: Option<Arc<AuthState>>,
+    access: Option<Arc<AccessLog>>,
+) -> Router
 where
     E: Embedder + Send + Sync + 'static,
     S: Searcher + Send + Sync + 'static,
 {
-    Router::new()
-        .route("/healthz", get(healthz))
+    // /v1/* require a valid bearer key (issue 032); /healthz stays open for monitoring.
+    // The access layer is added last = outermost, so auth rejects are logged as traffic too.
+    let protected = Router::new()
         .route("/v1/collections", get(collections::<E, S>))
         .route("/v1/search", post(search::<E, S>))
         .route("/v1/documents", get(documents::<E, S>))
         .route("/v1/extract", post(extract::<E, S>))
-        .with_state(state)
+        .layer(axum::middleware::from_fn_with_state(auth, auth_mw))
+        .layer(axum::middleware::from_fn_with_state(access, access_mw))
+        .with_state(state);
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(protected)
+}
+
+/// Extract the bearer token from `Authorization: Bearer <token>`.
+fn bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+}
+
+/// Auth + rate-limit middleware for `/v1/*` (issue 032). On success the resolved `Identity` is
+/// stashed in request extensions for handlers and echoed onto the response extensions so the
+/// (outer) access-log middleware can attribute the line.
+async fn auth_mw(
+    State(auth): State<Option<Arc<AuthState>>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let Some(auth) = auth else {
+        return next.run(req).await;
+    };
+    match auth.check(bearer(req.headers())) {
+        Ok(id) => {
+            req.extensions_mut().insert(id.clone());
+            let mut resp = next.run(req).await;
+            resp.extensions_mut().insert(id);
+            resp
+        }
+        Err(AuthReject::Unauthorized) => ApiError {
+            status: StatusCode::UNAUTHORIZED,
+            code: "unauthorized",
+            message: "missing or invalid bearer key".into(),
+            retry_after: None,
+        }
+        .into_response(),
+        Err(AuthReject::RateLimited(secs)) => ApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: "rate limit exceeded".into(),
+            retry_after: Some(secs),
+        }
+        .into_response(),
+    }
 }
 
 // ---- error -> HTTP (ADR-0005 table) -------------------------------------
@@ -230,7 +294,7 @@ async fn healthz() -> Json<serde_json::Value> {
 async fn search<E, S>(
     State(st): State<AppState<E, S>>,
     Json(req): Json<SearchReq>,
-) -> Result<Json<SearchResp>, ApiError>
+) -> Result<Response, ApiError>
 where
     E: Embedder + Send + Sync + 'static,
     S: Searcher + Send + Sync + 'static,
@@ -246,7 +310,8 @@ where
         )
         .await?;
     let confidence = ConfidenceJson::from(retrieval_confidence(&hits));
-    Ok(Json(SearchResp {
+    let label = confidence.label;
+    let mut resp = Json(SearchResp {
         hits: hits
             .into_iter()
             .map(|h| HitJson {
@@ -258,7 +323,15 @@ where
             })
             .collect(),
         confidence,
-    }))
+    })
+    .into_response();
+    // what/how of this search, for the access log (dropped when logging is off)
+    resp.extensions_mut().insert(LogFields {
+        collection: req.collection,
+        query: req.query,
+        confidence: label,
+    });
+    Ok(resp)
 }
 
 async fn documents<E, S>(

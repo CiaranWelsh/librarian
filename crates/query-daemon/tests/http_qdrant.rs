@@ -23,7 +23,7 @@ async fn collections_endpoint_over_qdrant() {
         searcher,
         4,
     ));
-    let app = router(AppState { svc });
+    let app = router(AppState { svc }, None, None);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

@@ -18,6 +18,24 @@ pub struct DaemonConfig {
     #[serde(default = "default_embeds")]
     pub max_concurrent_embeds: usize,
     pub embedder: EmbedderCfg,
+    /// Path to keys.toml for bearer-key auth (issue 032). Default: `~/.librarian/keys.toml`.
+    #[serde(default)]
+    pub keys_path: Option<String>,
+    /// JSONL access log (traffic monitoring). Absent = no logging.
+    #[serde(default)]
+    pub access_log: Option<AccessLogCfg>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccessLogCfg {
+    pub path: String,
+    /// Include the search query text in log lines (the one sensitive field).
+    #[serde(default = "default_true")]
+    pub queries: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_embeds() -> usize {
