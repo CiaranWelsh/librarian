@@ -23,7 +23,7 @@ operator — see the colleague-access runbook in the repo). Any OS works; the CL
 builds with Rust's `cargo` (install via https://rustup.rs if you don't have it):
 
 ```
-git clone git@bitbucket.org:amscins/librarian.git   # or: https://github.com/CiaranWelsh/librarian
+git clone git@bitbucket.org:amscins/librarian.git
 cd librarian
 cargo install --path crates/cli
 ```
