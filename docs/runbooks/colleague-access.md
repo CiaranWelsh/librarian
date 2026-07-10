@@ -11,15 +11,26 @@ You need two values from the operator: the URL above and **your personal key**.
 
 ### Option A: the `librarian` CLI (recommended)
 
+Works on Linux, macOS and Windows. Needs Rust's `cargo` (https://rustup.rs):
+
 ```bash
 cargo install --git https://github.com/CiaranWelsh/librarian librarian-cli
 ```
 
-Add to your shell profile (`~/.zshrc` / `~/.bashrc`):
+Set two environment variables, persistently for your platform.
+
+Linux / macOS (shell profile, e.g. `~/.bashrc` or `~/.zshrc`):
 
 ```bash
 export LIBRARIAN_DAEMON=https://asi-librarian.com
 export LIBRARIAN_KEY=<your key>
+```
+
+Windows (PowerShell):
+
+```powershell
+[Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://asi-librarian.com","User")
+[Environment]::SetEnvironmentVariable("LIBRARIAN_KEY","<your key>","User")
 ```
 
 Use it:
@@ -47,16 +58,29 @@ Endpoints: `POST /v1/search`, `GET /v1/documents?collection=`, `POST /v1/extract
 ### Optional: teach your Claude to use it (Claude Code skill)
 
 A ready-made skill teaches Claude Code when and how to search the library (query
-strategy, citing source_ids, reporting retrieval confidence):
+strategy, citing source_ids, reporting retrieval confidence). Save
+[`skills/asi-librarian/SKILL.md`](../../skills/asi-librarian/SKILL.md) from this repo
+into your Claude Code skills folder — `~/.claude/skills/asi-librarian/SKILL.md`
+(Windows: `%USERPROFILE%\.claude\skills\asi-librarian\SKILL.md`).
+
+Linux / macOS:
 
 ```bash
-mkdir -p ~/.claude/skills/librarian
-curl -o ~/.claude/skills/librarian/SKILL.md \
-  https://raw.githubusercontent.com/CiaranWelsh/librarian/main/skills/librarian/SKILL.md
+mkdir -p ~/.claude/skills/asi-librarian
+curl -o ~/.claude/skills/asi-librarian/SKILL.md \
+  https://raw.githubusercontent.com/CiaranWelsh/librarian/main/skills/asi-librarian/SKILL.md
 ```
 
-Restart Claude Code; it will pick the skill up automatically when reference
-questions come up (or invoke it directly with `/librarian`).
+Windows (PowerShell):
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\asi-librarian" | Out-Null
+Invoke-WebRequest -OutFile "$env:USERPROFILE\.claude\skills\asi-librarian\SKILL.md" `
+  https://raw.githubusercontent.com/CiaranWelsh/librarian/main/skills/asi-librarian/SKILL.md
+```
+
+Restart Claude Code; it picks the skill up automatically when reference questions
+come up (or invoke it directly with `/asi-librarian`).
 
 ### Key etiquette
 

@@ -1,5 +1,5 @@
 ---
-name: librarian
+name: asi-librarian
 description: >-
   Search the shared reference library (software-engineering & CS books, and
   particle-physics / detector papers) via the `librarian` CLI. Use this WHENEVER
@@ -9,7 +9,7 @@ description: >-
   answering reference questions from memory.
 ---
 
-# Librarian — reference search via the CLI
+# ASI Librarian — reference search via the CLI
 
 The reference corpus is served read-only at `https://asi-librarian.com`, queried with
 the `librarian` CLI. Searching the corpus before you assert something is the whole
@@ -19,17 +19,27 @@ confident paraphrase from memory.
 ## Setup (once)
 
 You need the CLI and two environment variables (the key comes from the library
-operator — see the colleague-access runbook in the repo):
+operator — see the colleague-access runbook in the repo). Any OS works; the CLI
+builds with Rust's `cargo` (install via https://rustup.rs if you don't have it):
 
 ```
 cargo install --git https://github.com/CiaranWelsh/librarian librarian-cli
-
-export LIBRARIAN_DAEMON=https://asi-librarian.com
-export LIBRARIAN_KEY=<your personal key>
 ```
 
-Put the exports in your shell profile. The key is a personal bearer token: treat it
-like a password, never commit it.
+Then set two environment variables, persistently for your platform:
+
+- Linux / macOS (shell profile, e.g. `~/.bashrc` or `~/.zshrc`):
+  ```
+  export LIBRARIAN_DAEMON=https://asi-librarian.com
+  export LIBRARIAN_KEY=<your personal key>
+  ```
+- Windows (PowerShell, persists for your user account):
+  ```
+  [Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://asi-librarian.com","User")
+  [Environment]::SetEnvironmentVariable("LIBRARIAN_KEY","<your personal key>","User")
+  ```
+
+The key is a personal bearer token: treat it like a password, never commit it.
 
 ## Search
 
