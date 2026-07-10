@@ -69,15 +69,15 @@ into your Claude Code skills folder.
 Linux / macOS (from the repo root):
 
 ```bash
-mkdir -p ~/.claude/claude-skills/asi-librarian
-cp claude-skills/asi-librarian/SKILL.md ~/.claude/claude-skills/asi-librarian/
+mkdir -p ~/.claude/skills/asi-librarian
+cp claude-skills/asi-librarian/SKILL.md ~/.claude/skills/asi-librarian/
 ```
 
 Windows (PowerShell, from the repo root):
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\claude-skills\asi-librarian" | Out-Null
-Copy-Item claude-skills\asi-librarian\SKILL.md "$env:USERPROFILE\.claude\claude-skills\asi-librarian\"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\asi-librarian" | Out-Null
+Copy-Item claude-skills\asi-librarian\SKILL.md "$env:USERPROFILE\.claude\skills\asi-librarian\"
 ```
 
 Restart Claude Code; it picks the skill up automatically when reference questions
