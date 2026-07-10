@@ -1,5 +1,5 @@
 ---
-name: asi-librarian
+name: rag-librarian
 description: >-
   Search the shared reference library (software-engineering & CS books, and
   particle-physics / detector papers) via the `librarian` CLI. Use this WHENEVER
@@ -9,9 +9,9 @@ description: >-
   answering reference questions from memory.
 ---
 
-# ASI Librarian — reference search via the CLI
+# RAG Librarian — reference search via the CLI
 
-The reference corpus is served read-only at `https://asi-librarian.com`, queried with
+The reference corpus is served read-only at `https://rag-librarian.com`, queried with
 the `librarian` CLI. Searching the corpus before you assert something is the whole
 point: the books and papers are the source of truth, and a real citation beats a
 confident paraphrase from memory.
@@ -32,12 +32,12 @@ Then set two environment variables, persistently for your platform:
 
 - Linux / macOS (shell profile, e.g. `~/.bashrc` or `~/.zshrc`):
   ```
-  export LIBRARIAN_DAEMON=https://asi-librarian.com
+  export LIBRARIAN_DAEMON=https://rag-librarian.com
   export LIBRARIAN_KEY=<your personal key>
   ```
 - Windows (PowerShell, persists for your user account):
   ```
-  [Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://asi-librarian.com","User")
+  [Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://rag-librarian.com","User")
   [Environment]::SetEnvironmentVariable("LIBRARIAN_KEY","<your personal key>","User")
   ```
 

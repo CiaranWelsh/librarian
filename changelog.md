@@ -11,7 +11,7 @@ All notable changes to the librarian CLI are recorded here. Format loosely follo
   bearer-key auth with per-key token-bucket rate limits: keys in `~/.librarian/keys.toml`
   (hot-reloaded on save, no restart), fail-closed on `/v1/*`, `/healthz` open. The CLI
   sends `Authorization: Bearer $LIBRARIAN_KEY` when set. Deployed: the library is served
-  read-only at **`https://asi-librarian.com`** (Cloudflare Tunnel → keyed daemon on
+  read-only at **`https://rag-librarian.com`** (Cloudflare Tunnel → keyed daemon on
   turbo:6701, systemd-supervised); the tailnet daemon is unchanged in behaviour once a
   key is exported. Onboarding + security model: `docs/runbooks/colleague-access.md`.
 - **JSONL access log** on the daemon (traffic monitoring without a telemetry stack):

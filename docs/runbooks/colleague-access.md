@@ -1,6 +1,6 @@
 # Runbook: colleague access to the library
 
-The reference library is served read-only at **`https://asi-librarian.com`** (Cloudflare
+The reference library is served read-only at **`https://rag-librarian.com`** (Cloudflare
 Tunnel → keyed query daemon on turbo). Access is keyed-and-invited: every person gets
 their own bearer key, issued by the operator. There is no self-service signup, by design
 (the corpus contains copyrighted excerpts).
@@ -26,14 +26,14 @@ Set two environment variables, persistently for your platform.
 Linux / macOS (shell profile, e.g. `~/.bashrc` or `~/.zshrc`):
 
 ```bash
-export LIBRARIAN_DAEMON=https://asi-librarian.com
+export LIBRARIAN_DAEMON=https://rag-librarian.com
 export LIBRARIAN_KEY=<your key>
 ```
 
 Windows (PowerShell):
 
 ```powershell
-[Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://asi-librarian.com","User")
+[Environment]::SetEnvironmentVariable("LIBRARIAN_DAEMON","https://rag-librarian.com","User")
 [Environment]::SetEnvironmentVariable("LIBRARIAN_KEY","<your key>","User")
 ```
 
@@ -52,7 +52,7 @@ Collections: `software` (SE/CS books + detector manuals) and `particle-physics`
 
 ```bash
 curl -s -H "Authorization: Bearer $LIBRARIAN_KEY" -H 'content-type: application/json' \
-  -X POST https://asi-librarian.com/v1/search \
+  -X POST https://rag-librarian.com/v1/search \
   -d '{"collection":"software","query":"...","limit":8}'
 ```
 
@@ -63,25 +63,25 @@ Endpoints: `POST /v1/search`, `GET /v1/documents?collection=`, `POST /v1/extract
 
 A ready-made skill teaches Claude Code when and how to search the library (query
 strategy, citing source_ids, reporting retrieval confidence). Copy
-[`claude-skills/asi-librarian/SKILL.md`](../../claude-skills/asi-librarian/SKILL.md) from your clone
+[`claude-skills/rag-librarian/SKILL.md`](../../claude-skills/rag-librarian/SKILL.md) from your clone
 into your Claude Code skills folder.
 
 Linux / macOS (from the repo root):
 
 ```bash
-mkdir -p ~/.claude/skills/asi-librarian
-cp claude-skills/asi-librarian/SKILL.md ~/.claude/skills/asi-librarian/
+mkdir -p ~/.claude/skills/rag-librarian
+cp claude-skills/rag-librarian/SKILL.md ~/.claude/skills/rag-librarian/
 ```
 
 Windows (PowerShell, from the repo root):
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\asi-librarian" | Out-Null
-Copy-Item claude-skills\asi-librarian\SKILL.md "$env:USERPROFILE\.claude\skills\asi-librarian\"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\rag-librarian" | Out-Null
+Copy-Item claude-skills\rag-librarian\SKILL.md "$env:USERPROFILE\.claude\skills\rag-librarian\"
 ```
 
 Restart Claude Code; it picks the skill up automatically when reference questions
-come up (or invoke it directly with `/asi-librarian`).
+come up (or invoke it directly with `/rag-librarian`).
 
 ### Key etiquette
 
