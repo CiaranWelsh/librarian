@@ -12,11 +12,10 @@ You need two values from the operator: the URL above and **your personal key**.
 ### Option A: the `librarian` CLI (recommended)
 
 Works on Linux, macOS and Windows. Needs Rust's `cargo` (https://rustup.rs).
-Clone the repo (Bitbucket with your amscins account, or the GitHub mirror) and
-build the CLI:
+Clone the repo and build the CLI:
 
 ```bash
-git clone git@bitbucket.org:amscins/librarian.git   
+git clone https://github.com/CiaranWelsh/librarian.git
 cd librarian
 cargo install --path crates/cli
 ```
@@ -40,13 +39,14 @@ Windows (PowerShell):
 Use it:
 
 ```bash
+librarian list                                                  # collections and sizes
 librarian query software "how does a token bucket rate limiter work?" --limit 8
 librarian query particle-physics "timepix4 time of arrival calibration"
 librarian extract software "<source_id>#<chunk>" --context 5   # read around a hit
 ```
 
-Collections: `software` (SE/CS books + detector manuals) and `particle-physics`
-(detector/physics papers).
+Collections: `software` (SE/CS books + detector manuals), `particle-physics`
+(detector/physics papers) and `trading` (trading and financial-ML books).
 
 ### Option B: plain HTTP (no install)
 
@@ -62,22 +62,22 @@ Endpoints: `POST /v1/search`, `GET /v1/documents?collection=`, `POST /v1/extract
 ### Optional: teach your Claude to use it (Claude Code skill)
 
 A ready-made skill teaches Claude Code when and how to search the library (query
-strategy, citing source_ids, reporting retrieval confidence). Copy
-[`claude-skills/rag-librarian/SKILL.md`](../../claude-skills/rag-librarian/SKILL.md) from your clone
-into your Claude Code skills folder.
+strategy, citing source_ids, reporting retrieval confidence). Copy the whole
+[`claude-skills/rag-librarian/`](../../claude-skills/rag-librarian/) folder from your clone
+into your Claude Code skills folder, so its `references/` subfolder travels with it.
 
 Linux / macOS (from the repo root):
 
 ```bash
-mkdir -p ~/.claude/skills/rag-librarian
-cp claude-skills/rag-librarian/SKILL.md ~/.claude/skills/rag-librarian/
+mkdir -p ~/.claude/skills
+cp -r claude-skills/rag-librarian ~/.claude/skills/
 ```
 
 Windows (PowerShell, from the repo root):
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills\rag-librarian" | Out-Null
-Copy-Item claude-skills\rag-librarian\SKILL.md "$env:USERPROFILE\.claude\skills\rag-librarian\"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills" | Out-Null
+Copy-Item -Recurse -Force claude-skills\rag-librarian "$env:USERPROFILE\.claude\skills\"
 ```
 
 Restart Claude Code; it picks the skill up automatically when reference questions
