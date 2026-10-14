@@ -3,6 +3,20 @@
 All notable changes to the librarian CLI are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions track `crates/cli`.
 
+## [1.4.0] - 2026-10-14
+
+### Added
+
+- **`librarian list`** shows the collections the daemon serves, with each one's document
+  and chunk counts. It reads `/v1/collections` and `/v1/documents`, so the daemon is
+  unchanged. Supports `--json`, `--daemon` and `--timeout`. Document counts fetch each
+  collection's full source list, so the command takes a couple of seconds.
+
+### Notes
+
+- There is no 1.3.0 release. The `v1.3.0` tag (2026-06-09) marks the merge of the CLI UX
+  overhaul (issue 037), which shipped in 1.2.0, and it stays where it was published.
+
 ## [1.2.0] - 2026-07-10
 
 ### Added
