@@ -1,4 +1,4 @@
-//! Shared HTTP transport for the daemon-facing commands (query, extract, health, judge).
+//! Shared HTTP transport for the daemon-facing commands (query, extract, health, judge, list).
 //!
 //! One place owns: the blocking client and its timeout, the optional bearer auth, the daemon
 //! base URL, and the decode of the daemon's error envelope into a `ClientError`. The error's
@@ -93,21 +93,34 @@ impl Daemon {
     /// the daemon error envelope to a typed `ClientError`.
     pub fn post(&self, path: &str, body: &Value) -> Result<Value, ClientError> {
         let url = format!("{}{}", self.base, path);
-        let resp = with_auth(self.client.post(&url).json(body))
-            .send()
-            .map_err(|e| {
-                if e.is_timeout() {
-                    ClientError::Timeout {
-                        url: url.clone(),
-                        secs: self.timeout_secs,
-                    }
-                } else {
-                    ClientError::Connect {
-                        url: url.clone(),
-                        cause: e.to_string(),
-                    }
+        self.send(&url, self.client.post(&url).json(body))
+    }
+
+    /// GET `<base><path>?<query>` and return the parsed JSON, with the same error mapping as `post`.
+    pub fn get(&self, path: &str, query: &[(&str, &str)]) -> Result<Value, ClientError> {
+        let url = format!("{}{}", self.base, path);
+        self.send(&url, self.client.get(&url).query(query))
+    }
+
+    fn send(
+        &self,
+        url: &str,
+        req: reqwest::blocking::RequestBuilder,
+    ) -> Result<Value, ClientError> {
+        let url = url.to_string();
+        let resp = with_auth(req).send().map_err(|e| {
+            if e.is_timeout() {
+                ClientError::Timeout {
+                    url: url.clone(),
+                    secs: self.timeout_secs,
                 }
-            })?;
+            } else {
+                ClientError::Connect {
+                    url: url.clone(),
+                    cause: e.to_string(),
+                }
+            }
+        })?;
         let status = resp.status();
         let value: Value = resp.json().map_err(|e| ClientError::BadResponse {
             cause: e.to_string(),

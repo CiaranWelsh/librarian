@@ -8,6 +8,7 @@ pub mod http;
 pub mod ingest;
 pub mod judge;
 pub mod lifecycle;
+pub mod list;
 pub mod output;
 pub mod query;
 pub mod remove;

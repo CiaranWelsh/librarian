@@ -23,6 +23,7 @@ use commands::http::Daemon;
 use commands::ingest::cmd_ingest;
 use commands::judge::cmd_judge;
 use commands::lifecycle::{cmd_restart, cmd_start, cmd_stop};
+use commands::list::cmd_list;
 use commands::output::Render;
 use commands::query::cmd_query;
 use commands::remove::cmd_remove;
@@ -113,6 +114,15 @@ enum Cmd {
         name: String,
         #[arg(long)]
         config: PathBuf,
+    },
+    /// List the collections the daemon serves, with document and chunk counts.
+    List {
+        /// Daemon base URL (overrides $LIBRARIAN_DAEMON and config).
+        #[arg(long)]
+        daemon: Option<String>,
+        /// Request timeout in seconds [default: 30].
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Search a collection for the most relevant chunks.
     ///
@@ -257,6 +267,14 @@ fn main() -> ExitCode {
         Cmd::Start { name, config } => cmd_start(&name, &config),
         Cmd::Stop { name } => cmd_stop(&name),
         Cmd::Restart { name, config } => cmd_restart(&name, &config),
+        Cmd::List { daemon, timeout } => {
+            let cfg = client_config::ClientConfig::load();
+            let d = Daemon::new(
+                &cfg.resolve_daemon(daemon.as_deref()),
+                cfg.resolve_timeout(timeout),
+            );
+            cmd_list(&d, render)
+        }
         Cmd::Query {
             collection,
             query,
